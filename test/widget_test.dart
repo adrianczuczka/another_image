@@ -3,23 +3,8 @@ import 'package:another_image/src/api/image_api.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
-class FakeImageApi extends ImageApi {
-  FakeImageApi(this.results)
-      : super(client: MockClient((_) async => http.Response('', 500)));
-
-  final List<Object> results;
-  int calls = 0;
-
-  @override
-  Future<String> fetchRandomImageUrl() async {
-    final result = results[calls++];
-    if (result is ImageApiException) throw result;
-    return result as String;
-  }
-}
+import 'fake_image_api.dart';
 
 Future<ColorScheme> stubSchemeExtractor(String url, Brightness brightness) async {
   return ColorScheme.fromSeed(seedColor: Colors.teal, brightness: brightness);

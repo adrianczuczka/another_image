@@ -1,20 +1,50 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 
 import '../state/random_image_controller.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller});
 
   final RandomImageController controller;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_announceState);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_announceState);
+    super.dispose();
+  }
+
+  void _announceState() {
+    // The error panel is a live region and announces itself; loaded images
+    // need an explicit announcement for screen reader users.
+    if (mounted && widget.controller.state is RandomImageLoaded) {
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        'New image loaded',
+        TextDirection.ltr,
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return ListenableBuilder(
-      listenable: controller,
+      listenable: widget.controller,
       builder: (context, _) {
-        final state = controller.state;
         return Scaffold(
           backgroundColor: colorScheme.primaryContainer,
           body: SafeArea(
@@ -26,7 +56,19 @@ class HomeScreen extends StatelessWidget {
                       padding: const EdgeInsets.all(32),
                       child: AspectRatio(
                         aspectRatio: 1,
-                        child: _ImageSquare(state: state, onRetry: controller.fetch),
+                        // A persistent surface so the square's footprint is
+                        // stable across loading, image, and error states.
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: colorScheme.surfaceContainerHighest
+                                .withValues(alpha: 0.35),
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          child: _ImageSquare(
+                            state: widget.controller.state,
+                            onRetry: widget.controller.fetch,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -34,8 +76,14 @@ class HomeScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 32),
                   child: FilledButton(
-                    onPressed:
-                        state is RandomImageLoading ? null : controller.fetch,
+                    // Always live: the controller ignores re-entrant calls,
+                    // and disabling would flash the button grey on each tap.
+                    onPressed: widget.controller.fetch,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 52),
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      textStyle: theme.textTheme.titleMedium,
+                    ),
                     child: const Text(
                       'Another',
                       semanticsLabel: 'Load another random image',
@@ -64,6 +112,8 @@ class _ImageSquare extends StatelessWidget {
         reduceMotion ? Duration.zero : const Duration(milliseconds: 400);
     return AnimatedSwitcher(
       duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
       // The default layout builder loosens constraints, letting the image
       // take its natural aspect ratio; expand children to keep the square.
       layoutBuilder: (currentChild, previousChildren) => Stack(
@@ -79,10 +129,10 @@ class _ImageSquare extends StatelessWidget {
         RandomImageError(:final message) =>
           _ErrorPanel(message: message, onRetry: onRetry),
         RandomImageLoaded(:final url) => Semantics(
+            key: ValueKey(url),
             image: true,
             label: 'Random photo from Unsplash',
             child: ClipRRect(
-              key: ValueKey(url),
               borderRadius: BorderRadius.circular(24),
               child: CachedNetworkImage(
                 imageUrl: url,
@@ -115,30 +165,32 @@ class _ErrorPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.broken_image_outlined,
-            size: 48,
-            color: colorScheme.onSurfaceVariant,
+    final theme = Theme.of(context);
+    return Semantics(
+      liveRegion: true,
+      child: Center(
+        // Scrolls rather than overflows the fixed square at large font scales.
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.broken_image_outlined,
+                size: 48,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 16),
+              TextButton(onPressed: onRetry, child: const Text('Try again')),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 16),
-          TextButton(onPressed: onRetry, child: const Text('Try again')),
-        ],
+        ),
       ),
     );
   }

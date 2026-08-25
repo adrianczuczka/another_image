@@ -37,22 +37,43 @@ class RandomImageController extends ChangeNotifier {
   RandomImageState get state => _state;
 
   String? _currentUrl;
+  bool _fetching = false;
+  bool _disposed = false;
 
   Future<void> fetch() async {
+    if (_fetching) return;
+    _fetching = true;
     _state = const RandomImageLoading();
-    notifyListeners();
+    _notify();
     try {
       var url = await _api.fetchRandomImageUrl();
       for (var attempt = 0;
           url == _currentUrl && attempt < maxDuplicateRetries;
           attempt++) {
-        url = await _api.fetchRandomImageUrl();
+        try {
+          url = await _api.fetchRandomImageUrl();
+        } on ImageApiException {
+          break; // The duplicate in hand is still displayable.
+        }
       }
       _currentUrl = url;
       _state = RandomImageLoaded(url);
     } on ImageApiException catch (e) {
       _state = RandomImageError(e.message);
+    } catch (_) {
+      _state = const RandomImageError('Something went wrong. Try again.');
     }
-    notifyListeners();
+    _fetching = false;
+    _notify();
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

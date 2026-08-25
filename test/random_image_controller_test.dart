@@ -1,24 +1,10 @@
+import 'dart:async';
+
 import 'package:another_image/src/api/image_api.dart';
 import 'package:another_image/src/state/random_image_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
-/// Returns queued results in order; a queued [ImageApiException] is thrown.
-class FakeImageApi extends ImageApi {
-  FakeImageApi(this.results)
-      : super(client: MockClient((_) async => http.Response('', 500)));
-
-  final List<Object> results;
-  int calls = 0;
-
-  @override
-  Future<String> fetchRandomImageUrl() async {
-    final result = results[calls++];
-    if (result is ImageApiException) throw result;
-    return result as String;
-  }
-}
+import 'fake_image_api.dart';
 
 void main() {
   test('emits loading then loaded on success', () async {
@@ -40,6 +26,19 @@ void main() {
     await controller.fetch();
 
     expect((controller.state as RandomImageError).message, 'down');
+  });
+
+  test('surfaces a generic error for unexpected exceptions', () async {
+    final controller = RandomImageController(
+      FakeImageApi([const FormatException('bad uri')]),
+    );
+
+    await controller.fetch();
+
+    expect(
+      (controller.state as RandomImageError).message,
+      'Something went wrong. Try again.',
+    );
   });
 
   test('re-rolls when the API returns the current URL again', () async {
@@ -66,6 +65,17 @@ void main() {
     expect((controller.state as RandomImageLoaded).url, 'url-a');
   });
 
+  test('keeps the duplicate when a re-roll fails', () async {
+    final api = FakeImageApi(['url-a', 'url-a', ImageApiException('down')]);
+    final controller = RandomImageController(api);
+
+    await controller.fetch();
+    await controller.fetch();
+
+    expect(api.calls, 3);
+    expect((controller.state as RandomImageLoaded).url, 'url-a');
+  });
+
   test('recovers from error on the next fetch', () async {
     final controller = RandomImageController(
       FakeImageApi([ImageApiException('down'), 'url-a']),
@@ -76,5 +86,35 @@ void main() {
 
     await controller.fetch();
     expect((controller.state as RandomImageLoaded).url, 'url-a');
+  });
+
+  test('ignores fetch calls while one is in flight', () async {
+    final completer = Completer<String>();
+    final api = FakeImageApi([completer]);
+    final controller = RandomImageController(api);
+
+    final first = controller.fetch();
+    await controller.fetch(); // Re-entrant: must not consume a result.
+    completer.complete('url-a');
+    await first;
+
+    expect(api.calls, 1);
+    expect((controller.state as RandomImageLoaded).url, 'url-a');
+  });
+
+  test('does not notify after dispose', () async {
+    final completer = Completer<String>();
+    final controller = RandomImageController(FakeImageApi([completer]));
+    var notified = false;
+    controller.addListener(() => notified = true);
+
+    final pending = controller.fetch();
+    notified = false;
+    controller.dispose();
+    completer.complete('url-a');
+
+    // Completes without throwing "used after being disposed".
+    await pending;
+    expect(notified, isFalse);
   });
 }

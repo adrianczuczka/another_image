@@ -38,7 +38,8 @@ class AnotherImageApp extends StatefulWidget {
   State<AnotherImageApp> createState() => _AnotherImageAppState();
 }
 
-class _AnotherImageAppState extends State<AnotherImageApp> {
+class _AnotherImageAppState extends State<AnotherImageApp>
+    with WidgetsBindingObserver {
   static const _fallbackSeed = Color(0xFF5C6BC0);
 
   late final ImageApi _api = widget.api ?? ImageApi();
@@ -53,16 +54,25 @@ class _AnotherImageAppState extends State<AnotherImageApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller.addListener(_onStateChanged);
     _controller.fetch();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _controller.removeListener(_onStateChanged);
     _controller.dispose();
     _api.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAccessibilityFeatures() {
+    // Re-read platformDispatcher.accessibilityFeatures in build, so a
+    // mid-session reduce-motion toggle takes effect.
+    setState(() {});
   }
 
   void _onStateChanged() {

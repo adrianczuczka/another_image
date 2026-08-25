@@ -11,9 +11,9 @@ _Demo video link goes here._
 - Centered square image with rounded corners, cropped server-side to match the display.
 - Dynamic theming: after each image loads, a Material 3 color scheme is generated from it with `ColorScheme.fromImageProvider`, and the background animates to the new palette.
 - "Another" button that fetches a fresh image, with a determinate download progress indicator.
-- Error handling for both API failures and broken image URLs, each with an inline retry.
+- Error handling for both API failures and broken image URLs, each with an inline retry and a 10-second request timeout.
 - System light and dark mode – both schemes are seeded from the same image.
-- Accessibility: semantic labels on the image, button, and loading states; animations are disabled when the system reduce-motion setting is on.
+- Accessibility: semantic labels on the image, button, and loading states; a screen-reader announcement when a new image loads and a live-region error panel; animations are disabled when the system reduce-motion setting is on; the error panel scrolls instead of overflowing at large font scales.
 
 ## Architecture
 
@@ -34,7 +34,7 @@ Things the implementation accounts for, found by probing the endpoint:
 - `GET /image` answers with a 307 redirect to `/image/`, so the client calls the trailing-slash path directly.
 - The API serves a small rotating pool of URLs and often returns the same URL twice in a row. The controller re-rolls up to two times when it receives the URL that's already on screen, so tapping "Another" doesn't look like a no-op.
 - At least one URL in the pool is a dead Unsplash link (HTTP 404). The image widget falls back to an error panel with a retry action, and theme extraction failures are non-fatal.
-- The API returns bare Unsplash URLs that resolve to multi-MB originals. The client appends imgix parameters (`w=1200&h=1200&fit=crop&q=80&fm=jpg`) to download a phone-sized square crop instead.
+- The API returns bare Unsplash URLs that resolve to multi-MB originals. The client merges imgix parameters (`w=1200&h=1200&fit=crop&q=80&fm=jpg`) into the URL – preserving any parameters already present – to download a phone-sized square crop instead.
 
 Images are cached on disk by `cached_network_image`; theme extraction reads from the same cache, so each image is downloaded once.
 
