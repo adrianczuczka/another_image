@@ -68,10 +68,7 @@ class _ImageSquare extends StatelessWidget {
       // take its natural aspect ratio; expand children to keep the square.
       layoutBuilder: (currentChild, previousChildren) => Stack(
         fit: StackFit.expand,
-        children: [
-          ...previousChildren,
-          if (currentChild != null) currentChild,
-        ],
+        children: [...previousChildren, ?currentChild],
       ),
       child: switch (state) {
         RandomImageLoading() => const Center(
