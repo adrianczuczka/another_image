@@ -168,29 +168,41 @@ class _ErrorPanel extends StatelessWidget {
     final theme = Theme.of(context);
     return Semantics(
       liveRegion: true,
-      child: Center(
-        // Scrolls rather than overflows the fixed square at large font scales.
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.broken_image_outlined,
-                size: 48,
-                color: theme.colorScheme.onSurfaceVariant,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Scrolls rather than overflows the fixed square when space is
+          // tight (landscape, large font scales); the retry button stays
+          // outside the scroll area so it's always visible.
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.broken_image_outlined,
+                    size: 48,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 16),
-              TextButton(onPressed: onRetry, child: const Text('Try again')),
-            ],
+            ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 12),
+            child: TextButton(
+              onPressed: onRetry,
+              child: const Text('Try again'),
+            ),
+          ),
+        ],
       ),
     );
   }
