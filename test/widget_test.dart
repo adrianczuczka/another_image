@@ -6,16 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_image_api.dart';
 
-Future<ColorScheme> stubSchemeExtractor(String url, Brightness brightness) async {
-  return ColorScheme.fromSeed(seedColor: Colors.teal, brightness: brightness);
-}
+Future<Color> stubSeedExtractor(String url) async => Colors.teal;
 
 void main() {
   testWidgets('fetches on startup and again when Another is tapped',
       (tester) async {
     final api = FakeImageApi(['https://example.com/a', 'https://example.com/b']);
     await tester.pumpWidget(
-      AnotherImageApp(api: api, schemeExtractor: stubSchemeExtractor),
+      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
     );
     await tester.pump();
 
@@ -35,7 +33,7 @@ void main() {
       [ImageApiException('down'), 'https://example.com/a'],
     );
     await tester.pumpWidget(
-      AnotherImageApp(api: api, schemeExtractor: stubSchemeExtractor),
+      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
     );
     await tester.pump();
 

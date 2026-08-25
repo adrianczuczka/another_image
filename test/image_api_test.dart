@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:another_image/src/api/image_api.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -72,6 +75,23 @@ void main() {
       );
 
       expect(api.fetchRandomImageUrl, throwsA(isA<ImageApiException>()));
+    });
+
+    test('times out a stalled request', () {
+      fakeAsync((fake) {
+        final api = ImageApi(
+          // A request that never completes.
+          client: MockClient((_) => Completer<http.Response>().future),
+        );
+        Object? caught;
+        api
+            .fetchRandomImageUrl()
+            .then<void>((_) {}, onError: (Object e) => caught = e);
+
+        fake.elapse(ImageApi.timeout + const Duration(milliseconds: 1));
+
+        expect(caught, isA<ImageApiException>());
+      });
     });
 
     test('wraps network errors in user-presentable copy', () async {

@@ -3,36 +3,30 @@ import 'package:flutter/material.dart';
 
 import 'src/api/image_api.dart';
 import 'src/state/random_image_controller.dart';
+import 'src/theme/seed_color.dart';
 import 'src/ui/home_screen.dart';
 
 void main() {
   runApp(const AnotherImageApp());
 }
 
-/// Builds a [ColorScheme] from a loaded image, used to tint the app
-/// background. Injectable so tests can avoid real image decoding.
-typedef SchemeExtractor = Future<ColorScheme> Function(
-  String url,
-  Brightness brightness,
-);
+/// Extracts a seed color from a loaded image, used to derive the app's
+/// light and dark themes. Injectable so tests can avoid real image decoding.
+typedef SeedExtractor = Future<Color> Function(String url);
 
-Future<ColorScheme> _schemeFromNetworkImage(
-  String url,
-  Brightness brightness,
-) {
+Future<Color> _seedFromNetworkImage(String url) {
   // Shares the disk cache with the CachedNetworkImage widget showing the
-  // same URL, so this costs a decode, not a second download.
-  return ColorScheme.fromImageProvider(
-    provider: CachedNetworkImageProvider(url),
-    brightness: brightness,
+  // same URL, so this costs one thumbnail decode, not a second download.
+  return seedColorFromImageProvider(
+    CachedNetworkImageProvider(url, maxWidth: 112, maxHeight: 112),
   );
 }
 
 class AnotherImageApp extends StatefulWidget {
-  const AnotherImageApp({super.key, this.api, this.schemeExtractor});
+  const AnotherImageApp({super.key, this.api, this.seedExtractor});
 
   final ImageApi? api;
-  final SchemeExtractor? schemeExtractor;
+  final SeedExtractor? seedExtractor;
 
   @override
   State<AnotherImageApp> createState() => _AnotherImageAppState();
@@ -44,11 +38,10 @@ class _AnotherImageAppState extends State<AnotherImageApp>
 
   late final ImageApi _api = widget.api ?? ImageApi();
   late final RandomImageController _controller = RandomImageController(_api);
-  late final SchemeExtractor _extractScheme =
-      widget.schemeExtractor ?? _schemeFromNetworkImage;
+  late final SeedExtractor _extractSeed =
+      widget.seedExtractor ?? _seedFromNetworkImage;
 
-  ColorScheme? _lightScheme;
-  ColorScheme? _darkScheme;
+  Color _seed = _fallbackSeed;
   int _extractionSeq = 0;
 
   @override
@@ -78,20 +71,16 @@ class _AnotherImageAppState extends State<AnotherImageApp>
   void _onStateChanged() {
     final state = _controller.state;
     if (state is RandomImageLoaded) {
-      _updateSchemes(state.url);
+      _updateSeed(state.url);
     }
   }
 
-  Future<void> _updateSchemes(String url) async {
+  Future<void> _updateSeed(String url) async {
     final seq = ++_extractionSeq;
     try {
-      final light = await _extractScheme(url, Brightness.light);
-      final dark = await _extractScheme(url, Brightness.dark);
+      final seed = await _extractSeed(url);
       if (!mounted || seq != _extractionSeq) return;
-      setState(() {
-        _lightScheme = light;
-        _darkScheme = dark;
-      });
+      setState(() => _seed = seed);
     } catch (_) {
       // The image couldn't be decoded (e.g. a dead URL in the API's pool).
       // Keep the previous background rather than surfacing a second error.
@@ -106,15 +95,13 @@ class _AnotherImageAppState extends State<AnotherImageApp>
       title: 'Another Image',
       themeMode: ThemeMode.system,
       theme: ThemeData(
-        colorScheme:
-            _lightScheme ?? ColorScheme.fromSeed(seedColor: _fallbackSeed),
+        colorScheme: ColorScheme.fromSeed(seedColor: _seed),
       ),
       darkTheme: ThemeData(
-        colorScheme: _darkScheme ??
-            ColorScheme.fromSeed(
-              seedColor: _fallbackSeed,
-              brightness: Brightness.dark,
-            ),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _seed,
+          brightness: Brightness.dark,
+        ),
       ),
       themeAnimationDuration:
           reduceMotion ? Duration.zero : const Duration(milliseconds: 600),
