@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../api/image_api.dart';
@@ -40,7 +42,39 @@ class RandomImageController extends ChangeNotifier {
   bool _fetching = false;
   bool _disposed = false;
 
-  Future<void> fetch() async {
+  /// Whether the next image-load failure may be answered by silently
+  /// fetching a replacement. Granted once per user-initiated [fetch].
+  bool _replacementAvailable = false;
+
+  /// The URL whose failed load has a replacement fetch pending or in flight.
+  String? _replacingUrl;
+
+  /// Fetches a new image URL on the user's behalf.
+  Future<void> fetch() {
+    _replacementAvailable = true;
+    _replacingUrl = null;
+    return _fetch();
+  }
+
+  /// Reports that the image at [url] could not be loaded.
+  ///
+  /// A few of the API's URLs are dead, so the first failure after each
+  /// [fetch] is answered by fetching a replacement instead of bothering the
+  /// user. Returns true when the caller should keep showing a loading state
+  /// – a replacement is on its way, or the failure belongs to an image that
+  /// is no longer current – and false when the failure should be shown.
+  /// Idempotent and safe to call during build: the replacement fetch is
+  /// scheduled, not started synchronously.
+  bool imageFailed(String url) {
+    if (url != _currentUrl || url == _replacingUrl || _fetching) return true;
+    if (!_replacementAvailable) return false;
+    _replacementAvailable = false;
+    _replacingUrl = url;
+    scheduleMicrotask(_fetch);
+    return true;
+  }
+
+  Future<void> _fetch() async {
     if (_fetching) return;
     _fetching = true;
     _state = const RandomImageLoading();
@@ -63,6 +97,7 @@ class RandomImageController extends ChangeNotifier {
     } catch (_) {
       _state = const RandomImageError('Something went wrong. Try again.');
     }
+    _replacingUrl = null;
     _fetching = false;
     _notify();
   }

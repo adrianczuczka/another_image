@@ -1,41 +1,81 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../state/random_image_controller.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.controller});
+  const HomeScreen({super.key, required this.controller, this.cacheManager});
 
   final RandomImageController controller;
+
+  /// Backs the image widget; null uses the shared disk cache. Injectable so
+  /// tests can serve or fail images deterministically.
+  final BaseCacheManager? cacheManager;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  ImageStream? _pendingImage;
+  ImageStreamListener? _pendingImageListener;
+
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_announceState);
+    widget.controller.addListener(_onStateChanged);
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_announceState);
+    widget.controller.removeListener(_onStateChanged);
+    _stopWaitingForImage();
     super.dispose();
   }
 
-  void _announceState() {
-    // The error panel is a live region and announces itself; loaded images
-    // need an explicit announcement for screen reader users.
-    if (mounted && widget.controller.state is RandomImageLoaded) {
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        'New image loaded',
-        TextDirection.ltr,
-      );
-    }
+  void _onStateChanged() {
+    _stopWaitingForImage();
+    final state = widget.controller.state;
+    if (state is RandomImageLoaded) _announceWhenShown(state.url);
+  }
+
+  /// Tells screen reader users about the new image once it has decoded – not
+  /// when its URL arrives, since the download takes a moment and a few URLs
+  /// are dead. The error panel is a live region and announces itself.
+  ///
+  /// Resolving the same provider as the image widget shares its cache entry,
+  /// so this costs no extra download or decode.
+  void _announceWhenShown(String url) {
+    final stream = CachedNetworkImageProvider(
+      url,
+      cacheManager: widget.cacheManager,
+    ).resolve(ImageConfiguration.empty);
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (ImageInfo info, _) {
+        info.dispose();
+        _stopWaitingForImage();
+        if (!mounted) return;
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          'New image loaded',
+          Directionality.of(context),
+        );
+      },
+      onError: (_, _) => _stopWaitingForImage(),
+    );
+    _pendingImage = stream;
+    _pendingImageListener = listener;
+    stream.addListener(listener);
+  }
+
+  void _stopWaitingForImage() {
+    final listener = _pendingImageListener;
+    if (listener != null) _pendingImage?.removeListener(listener);
+    _pendingImage = null;
+    _pendingImageListener = null;
   }
 
   @override
@@ -46,7 +86,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final square = _Square(
           child: _ImageSquare(
             state: widget.controller.state,
+            cacheManager: widget.cacheManager,
             onRetry: widget.controller.fetch,
+            onImageFailed: widget.controller.imageFailed,
           ),
         );
         final button = _AnotherButton(onPressed: widget.controller.fetch);
@@ -92,9 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// The image area: always square, capped on large screens so it doesn't
-/// dwarf the button, with a persistent surface so its footprint is stable
-/// across loading, image, and error states.
 class _Square extends StatelessWidget {
   const _Square({required this.child});
 
@@ -146,10 +185,20 @@ class _AnotherButton extends StatelessWidget {
 }
 
 class _ImageSquare extends StatelessWidget {
-  const _ImageSquare({required this.state, required this.onRetry});
+  const _ImageSquare({
+    required this.state,
+    required this.cacheManager,
+    required this.onRetry,
+    required this.onImageFailed,
+  });
 
   final RandomImageState state;
+  final BaseCacheManager? cacheManager;
   final VoidCallback onRetry;
+
+  /// Reports a failed image load. Returns true when the square should keep
+  /// showing a loading state because a replacement is on its way.
+  final bool Function(String url) onImageFailed;
 
   @override
   Widget build(BuildContext context) {
@@ -167,13 +216,12 @@ class _ImageSquare extends StatelessWidget {
         children: [...previousChildren, ?currentChild],
       ),
       child: switch (state) {
-        RandomImageLoading() => const Center(
-            child: CircularProgressIndicator(
-              semanticsLabel: 'Loading a new image',
-            ),
+        RandomImageLoading() => const _Spinner(),
+        RandomImageError(:final message) => _ErrorPanel(
+            message: message,
+            actionLabel: 'Try again',
+            onAction: onRetry,
           ),
-        RandomImageError(:final message) =>
-          _ErrorPanel(message: message, onRetry: onRetry),
         RandomImageLoaded(:final url) => Semantics(
             key: ValueKey(url),
             image: true,
@@ -182,6 +230,7 @@ class _ImageSquare extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               child: CachedNetworkImage(
                 imageUrl: url,
+                cacheManager: cacheManager,
                 fit: BoxFit.cover,
                 fadeInDuration: fadeDuration,
                 fadeOutDuration: fadeDuration,
@@ -191,10 +240,14 @@ class _ImageSquare extends StatelessWidget {
                     semanticsLabel: 'Downloading image',
                   ),
                 ),
-                errorWidget: (context, _, error) => _ErrorPanel(
-                  message: "This image couldn't be loaded",
-                  onRetry: onRetry,
-                ),
+                errorWidget: (context, _, _) => onImageFailed(url)
+                    ? const _Spinner()
+                    : _ErrorPanel(
+                        message: "This image couldn't be loaded",
+                        // Retrying a dead URL is pointless; offer a fresh one.
+                        actionLabel: 'Try another',
+                        onAction: onRetry,
+                      ),
               ),
             ),
           ),
@@ -203,11 +256,27 @@ class _ImageSquare extends StatelessWidget {
   }
 }
 
+class _Spinner extends StatelessWidget {
+  const _Spinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: CircularProgressIndicator(semanticsLabel: 'Loading a new image'),
+    );
+  }
+}
+
 class _ErrorPanel extends StatelessWidget {
-  const _ErrorPanel({required this.message, required this.onRetry});
+  const _ErrorPanel({
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+  });
 
   final String message;
-  final VoidCallback onRetry;
+  final String actionLabel;
+  final VoidCallback onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -218,7 +287,7 @@ class _ErrorPanel extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           // Scrolls rather than overflows the fixed square when space is
-          // tight (landscape, large font scales); the retry button stays
+          // tight (landscape, large font scales); the action button stays
           // outside the scroll area so it's always visible.
           Flexible(
             child: SingleChildScrollView(
@@ -244,8 +313,8 @@ class _ErrorPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 12),
             child: TextButton(
-              onPressed: onRetry,
-              child: const Text('Try again'),
+              onPressed: onAction,
+              child: Text(actionLabel),
             ),
           ),
         ],

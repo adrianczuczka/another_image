@@ -4,16 +4,23 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'fake_cache_manager.dart';
 import 'fake_image_api.dart';
 
 Future<Color> stubSeedExtractor(String url) async => Colors.teal;
+
+const imageFailedCopy = "This image couldn't be loaded";
 
 void main() {
   testWidgets('fetches on startup and again when Another is tapped',
       (tester) async {
     final api = FakeImageApi(['https://example.com/a', 'https://example.com/b']);
     await tester.pumpWidget(
-      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
+      AnotherImageApp(
+        api: api,
+        seedExtractor: stubSeedExtractor,
+        cacheManager: FakeCacheManager(),
+      ),
     );
     await tester.pump();
 
@@ -33,7 +40,11 @@ void main() {
       [ImageApiException('down'), 'https://example.com/a'],
     );
     await tester.pumpWidget(
-      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
+      AnotherImageApp(
+        api: api,
+        seedExtractor: stubSeedExtractor,
+        cacheManager: FakeCacheManager(),
+      ),
     );
     await tester.pump();
 
@@ -48,6 +59,44 @@ void main() {
     expect(find.byType(CachedNetworkImage), findsOneWidget);
   });
 
+  testWidgets('replaces a dead image silently, then shows the panel',
+      (tester) async {
+    await tester.runAsync(() async {
+      final cache = FakeCacheManager(
+        imageFile: await solidImageFile(const Color(0xFF2196F3)),
+      );
+      final api = FakeImageApi([
+        'https://img.test/dead-1', // Startup: dead, replaced silently...
+        'https://img.test/ok-1', // ...by this one.
+        'https://img.test/dead-2', // Tap: dead, replaced once...
+        'https://img.test/dead-3', // ...but the replacement is dead too.
+        'https://img.test/ok-2', // "Try another".
+      ]);
+      await tester.pumpWidget(
+        AnotherImageApp(
+          api: api,
+          seedExtractor: stubSeedExtractor,
+          cacheManager: cache,
+        ),
+      );
+
+      await settle(tester, () => find.byType(RawImage).evaluate().isNotEmpty);
+      expect(api.calls, 2);
+      expect(find.text(imageFailedCopy), findsNothing);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Another'));
+      await settle(
+        tester,
+        () => find.text(imageFailedCopy).evaluate().isNotEmpty,
+      );
+      expect(api.calls, 4);
+
+      await tester.tap(find.widgetWithText(TextButton, 'Try another'));
+      await settle(tester, () => find.text(imageFailedCopy).evaluate().isEmpty);
+      expect(api.calls, 5);
+    });
+  });
+
   testWidgets('stacks the button below the square in portrait',
       (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
@@ -55,7 +104,11 @@ void main() {
     addTearDown(tester.view.reset);
     final api = FakeImageApi(['https://example.com/a']);
     await tester.pumpWidget(
-      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
+      AnotherImageApp(
+        api: api,
+        seedExtractor: stubSeedExtractor,
+        cacheManager: FakeCacheManager(),
+      ),
     );
     await tester.pump();
 
@@ -75,7 +128,11 @@ void main() {
     addTearDown(tester.view.reset);
     final api = FakeImageApi(['https://example.com/a']);
     await tester.pumpWidget(
-      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
+      AnotherImageApp(
+        api: api,
+        seedExtractor: stubSeedExtractor,
+        cacheManager: FakeCacheManager(),
+      ),
     );
     await tester.pump();
 

@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'src/api/image_api.dart';
 import 'src/state/random_image_controller.dart';
@@ -23,10 +24,18 @@ Future<Color> _seedFromNetworkImage(String url) {
 }
 
 class AnotherImageApp extends StatefulWidget {
-  const AnotherImageApp({super.key, this.api, this.seedExtractor});
+  const AnotherImageApp({
+    super.key,
+    this.api,
+    this.seedExtractor,
+    this.cacheManager,
+  });
 
   final ImageApi? api;
   final SeedExtractor? seedExtractor;
+
+  /// Image cache for the screen; null uses the shared disk cache.
+  final BaseCacheManager? cacheManager;
 
   @override
   State<AnotherImageApp> createState() => _AnotherImageAppState();
@@ -106,7 +115,10 @@ class _AnotherImageAppState extends State<AnotherImageApp>
       ),
       themeAnimationDuration:
           reduceMotion ? Duration.zero : const Duration(milliseconds: 600),
-      home: HomeScreen(controller: _controller),
+      home: HomeScreen(
+        controller: _controller,
+        cacheManager: widget.cacheManager,
+      ),
     );
   }
 }
