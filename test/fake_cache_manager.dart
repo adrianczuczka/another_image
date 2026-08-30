@@ -56,9 +56,9 @@ Future<Uint8List> solidPng(ui.Color color, {int size = 8}) async {
   );
   final image = await recorder.endRecording().toImage(size, size);
   try {
-    return (await image.toByteData(format: ui.ImageByteFormat.png))!
-        .buffer
-        .asUint8List();
+    return (await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    ))!.buffer.asUint8List();
   } finally {
     image.dispose();
   }

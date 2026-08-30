@@ -7,10 +7,10 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 Matcher throwsFailure(ImageApiFailure failure, {int? statusCode}) => throwsA(
-      isA<ImageApiException>()
-          .having((e) => e.failure, 'failure', failure)
-          .having((e) => e.statusCode, 'statusCode', statusCode),
-    );
+  isA<ImageApiException>()
+      .having((e) => e.failure, 'failure', failure)
+      .having((e) => e.statusCode, 'statusCode', statusCode),
+);
 
 void main() {
   group('ImageApi.fetchRandomImageUrl', () {
@@ -33,20 +33,24 @@ void main() {
       expect(url.queryParameters, ImageApi.imageParams);
     });
 
-    test('preserves existing query params; sizing params win on conflict',
-        () async {
-      final api = ImageApi(
-        client: MockClient((_) async => http.Response(
+    test(
+      'preserves existing query params; sizing params win on conflict',
+      () async {
+        final api = ImageApi(
+          client: MockClient(
+            (_) async => http.Response(
               '{"url": "https://images.unsplash.com/photo-123?sig=abc&w=32"}',
               200,
-            )),
-      );
+            ),
+          ),
+        );
 
-      final url = Uri.parse(await api.fetchRandomImageUrl());
+        final url = Uri.parse(await api.fetchRandomImageUrl());
 
-      expect(url.queryParameters['sig'], 'abc');
-      expect(url.queryParameters['w'], ImageApi.imageParams['w']);
-    });
+        expect(url.queryParameters['sig'], 'abc');
+        expect(url.queryParameters['w'], ImageApi.imageParams['w']);
+      },
+    );
 
     test('reports a non-200 response as a server error with its status', () {
       final api = ImageApi(
@@ -100,16 +104,20 @@ void main() {
           client: MockClient((_) => Completer<http.Response>().future),
         );
         Object? caught;
-        api
-            .fetchRandomImageUrl()
-            .then<void>((_) {}, onError: (Object e) => caught = e);
+        api.fetchRandomImageUrl().then<void>(
+          (_) {},
+          onError: (Object e) => caught = e,
+        );
 
         fake.elapse(ImageApi.timeout + const Duration(milliseconds: 1));
 
         expect(
           caught,
-          isA<ImageApiException>()
-              .having((e) => e.failure, 'failure', ImageApiFailure.unreachable),
+          isA<ImageApiException>().having(
+            (e) => e.failure,
+            'failure',
+            ImageApiFailure.unreachable,
+          ),
         );
       });
     });

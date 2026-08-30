@@ -85,9 +85,11 @@ class RandomImageController extends ChangeNotifier {
     _notify();
     try {
       var url = await _api.fetchRandomImageUrl();
-      for (var attempt = 0;
-          url == _currentUrl && attempt < maxDuplicateRetries;
-          attempt++) {
+      for (
+        var attempt = 0;
+        url == _currentUrl && attempt < maxDuplicateRetries;
+        attempt++
+      ) {
         try {
           url = await _api.fetchRandomImageUrl();
         } on ImageApiException {
@@ -101,12 +103,14 @@ class RandomImageController extends ChangeNotifier {
     } catch (error, stack) {
       // Not an API problem but a bug: report it where developers and crash
       // reporters see it, and keep the screen usable.
-      FlutterError.reportError(FlutterErrorDetails(
-        exception: error,
-        stack: stack,
-        library: 'another_image',
-        context: ErrorDescription('while fetching a random image'),
-      ));
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'another_image',
+          context: ErrorDescription('while fetching a random image'),
+        ),
+      );
       _state = const RandomImageError(null);
     }
     _replacingUrl = null;

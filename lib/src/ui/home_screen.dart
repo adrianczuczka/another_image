@@ -186,8 +186,7 @@ class _AnotherButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final large =
-        MediaQuery.sizeOf(context).shortestSide >= tabletBreakpoint;
+    final large = MediaQuery.sizeOf(context).shortestSide >= tabletBreakpoint;
     final textTheme = Theme.of(context).textTheme;
     return FilledButton(
       // Always live: the controller ignores re-entrant calls, and disabling
@@ -279,16 +278,18 @@ class _ImageSquare extends StatelessWidget {
 }
 
 /// User copy for a failed fetch; the API layer only reports the cause.
-String _fetchErrorCopy(ImageApiFailure? cause, int? statusCode) =>
-    switch (cause) {
-      ImageApiFailure.unreachable =>
-        "Couldn't reach the image service. Check your connection and try again.",
-      ImageApiFailure.serverError =>
-        'The image service had a problem (HTTP $statusCode). Try again.',
-      ImageApiFailure.malformed =>
-        'The image service sent an unexpected response. Try again.',
-      null => 'Something went wrong. Try again.',
-    };
+String _fetchErrorCopy(
+  ImageApiFailure? cause,
+  int? statusCode,
+) => switch (cause) {
+  ImageApiFailure.unreachable =>
+    "Couldn't reach the image service. Check your connection and try again.",
+  ImageApiFailure.serverError =>
+    'The image service had a problem (HTTP $statusCode). Try again.',
+  ImageApiFailure.malformed =>
+    'The image service sent an unexpected response. Try again.',
+  null => 'Something went wrong. Try again.',
+};
 
 class _Spinner extends StatelessWidget {
   const _Spinner();

@@ -21,8 +21,9 @@ void main() {
   });
 
   test('emits error state when the API fails', () async {
-    final controller =
-        RandomImageController(FakeImageApi([ImageApiException(ImageApiFailure.unreachable)]));
+    final controller = RandomImageController(
+      FakeImageApi([ImageApiException(ImageApiFailure.unreachable)]),
+    );
 
     await controller.fetch();
 
@@ -59,21 +60,27 @@ void main() {
     expect(api.calls, 3);
   });
 
-  test('gives up re-rolling after the retry cap and keeps the duplicate',
-      () async {
-    final api = FakeImageApi(['url-a', 'url-a', 'url-a', 'url-a', 'url-a']);
-    final controller = RandomImageController(api);
+  test(
+    'gives up re-rolling after the retry cap and keeps the duplicate',
+    () async {
+      final api = FakeImageApi(['url-a', 'url-a', 'url-a', 'url-a', 'url-a']);
+      final controller = RandomImageController(api);
 
-    await controller.fetch();
-    await controller.fetch();
+      await controller.fetch();
+      await controller.fetch();
 
-    // Second fetch: 1 initial attempt + maxDuplicateRetries re-rolls.
-    expect(api.calls, 2 + RandomImageController.maxDuplicateRetries);
-    expect((controller.state as RandomImageLoaded).url, 'url-a');
-  });
+      // Second fetch: 1 initial attempt + maxDuplicateRetries re-rolls.
+      expect(api.calls, 2 + RandomImageController.maxDuplicateRetries);
+      expect((controller.state as RandomImageLoaded).url, 'url-a');
+    },
+  );
 
   test('keeps the duplicate when a re-roll fails', () async {
-    final api = FakeImageApi(['url-a', 'url-a', ImageApiException(ImageApiFailure.unreachable)]);
+    final api = FakeImageApi([
+      'url-a',
+      'url-a',
+      ImageApiException(ImageApiFailure.unreachable),
+    ]);
     final controller = RandomImageController(api);
 
     await controller.fetch();
@@ -126,19 +133,21 @@ void main() {
   });
 
   group('imageFailed', () {
-    test('fetches a replacement for the first dead image after a fetch',
-        () async {
-      final api = FakeImageApi(['url-a', 'url-b']);
-      final controller = RandomImageController(api);
-      await controller.fetch();
+    test(
+      'fetches a replacement for the first dead image after a fetch',
+      () async {
+        final api = FakeImageApi(['url-a', 'url-b']);
+        final controller = RandomImageController(api);
+        await controller.fetch();
 
-      expect(controller.imageFailed('url-a'), isTrue);
-      expect(controller.state, isA<RandomImageLoaded>()); // Not yet started.
-      await pumpEventQueue();
+        expect(controller.imageFailed('url-a'), isTrue);
+        expect(controller.state, isA<RandomImageLoaded>()); // Not yet started.
+        await pumpEventQueue();
 
-      expect(api.calls, 2);
-      expect((controller.state as RandomImageLoaded).url, 'url-b');
-    });
+        expect(api.calls, 2);
+        expect((controller.state as RandomImageLoaded).url, 'url-b');
+      },
+    );
 
     test('is idempotent while the replacement is pending', () async {
       final api = FakeImageApi(['url-a', 'url-b']);
@@ -192,15 +201,17 @@ void main() {
       expect((controller.state as RandomImageLoaded).url, 'url-d');
     });
 
-    test('treats a failure for a stale URL as handled without fetching',
-        () async {
-      final api = FakeImageApi(['url-a']);
-      final controller = RandomImageController(api);
-      await controller.fetch();
+    test(
+      'treats a failure for a stale URL as handled without fetching',
+      () async {
+        final api = FakeImageApi(['url-a']);
+        final controller = RandomImageController(api);
+        await controller.fetch();
 
-      expect(controller.imageFailed('url-old'), isTrue);
-      await pumpEventQueue();
-      expect(api.calls, 1);
-    });
+        expect(controller.imageFailed('url-old'), isTrue);
+        await pumpEventQueue();
+        expect(api.calls, 1);
+      },
+    );
   });
 }

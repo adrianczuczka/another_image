@@ -105,8 +105,9 @@ class _AnotherImageAppState extends State<AnotherImageApp>
             contrastLevel: contrastLevel,
           ),
         ),
-        themeAnimationDuration:
-            reduceMotion ? Duration.zero : const Duration(milliseconds: 600),
+        themeAnimationDuration: reduceMotion
+            ? Duration.zero
+            : const Duration(milliseconds: 600),
         home: HomeScreen(
           controller: _images,
           cacheManager: widget.cacheManager,

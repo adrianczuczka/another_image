@@ -32,13 +32,14 @@ class ImageApiException implements Exception {
 /// Client for the random image API.
 class ImageApi {
   ImageApi({http.Client? client, Uri? endpoint})
-      : _client = client ?? http.Client(),
-        _endpoint = endpoint ?? defaultEndpoint;
+    : _client = client ?? http.Client(),
+      _endpoint = endpoint ?? defaultEndpoint;
 
   /// `/image/` with the trailing slash: the bare `/image` path answers with a
   /// 307 redirect to it.
-  static final Uri defaultEndpoint =
-      Uri.parse('https://november7-730026606190.europe-west1.run.app/image/');
+  static final Uri defaultEndpoint = Uri.parse(
+    'https://november7-730026606190.europe-west1.run.app/image/',
+  );
 
   static const Duration timeout = Duration(seconds: 10);
 

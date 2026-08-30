@@ -12,9 +12,13 @@ Future<Color> stubSeedExtractor(String url) async => Colors.teal;
 const imageFailedCopy = "This image couldn't be loaded";
 
 void main() {
-  testWidgets('fetches on startup and again when Another is tapped',
-      (tester) async {
-    final api = FakeImageApi(['https://example.com/a', 'https://example.com/b']);
+  testWidgets('fetches on startup and again when Another is tapped', (
+    tester,
+  ) async {
+    final api = FakeImageApi([
+      'https://example.com/a',
+      'https://example.com/b',
+    ]);
     await tester.pumpWidget(
       AnotherImageApp(
         api: api,
@@ -54,16 +58,20 @@ void main() {
     );
     expect(
       app.darkTheme!.colorScheme.primary,
-      ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark)
-          .primary,
+      ColorScheme.fromSeed(
+        seedColor: Colors.teal,
+        brightness: Brightness.dark,
+      ).primary,
     );
   });
 
-  testWidgets('shows an error panel with retry when the API fails',
-      (tester) async {
-    final api = FakeImageApi(
-      [ImageApiException(ImageApiFailure.unreachable), 'https://example.com/a'],
-    );
+  testWidgets('shows an error panel with retry when the API fails', (
+    tester,
+  ) async {
+    final api = FakeImageApi([
+      ImageApiException(ImageApiFailure.unreachable),
+      'https://example.com/a',
+    ]);
     await tester.pumpWidget(
       AnotherImageApp(
         api: api,
@@ -87,8 +95,9 @@ void main() {
     expect(find.byType(CachedNetworkImage), findsOneWidget);
   });
 
-  testWidgets('replaces a dead image silently, then shows the panel',
-      (tester) async {
+  testWidgets('replaces a dead image silently, then shows the panel', (
+    tester,
+  ) async {
     await tester.runAsync(() async {
       final cache = FakeCacheManager(
         imageFile: await solidImageFile(const Color(0xFF2196F3)),
@@ -125,8 +134,7 @@ void main() {
     });
   });
 
-  testWidgets('stacks the button below the square in portrait',
-      (tester) async {
+  testWidgets('stacks the button below the square in portrait', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -150,8 +158,9 @@ void main() {
     expect(button.center.dx, closeTo(square.center.dx, 1));
   });
 
-  testWidgets('fills the width on a phone with a regular-size button',
-      (tester) async {
+  testWidgets('fills the width on a phone with a regular-size button', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -172,8 +181,9 @@ void main() {
     expect(button.height, 52);
   });
 
-  testWidgets('places the button beside the square in landscape',
-      (tester) async {
+  testWidgets('places the button beside the square in landscape', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

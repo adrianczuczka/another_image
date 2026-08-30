@@ -11,12 +11,12 @@ import 'fake_cache_manager.dart';
 /// [expected]; the quantizer round-trips through Lab, which can move a
 /// channel by one.
 Matcher closeToColor(Color expected, {int tolerance = 2}) => predicate<Color>(
-      (c) =>
-          ((c.r - expected.r) * 255).abs() <= tolerance &&
-          ((c.g - expected.g) * 255).abs() <= tolerance &&
-          ((c.b - expected.b) * 255).abs() <= tolerance,
-      'within $tolerance/255 of #${expected.toARGB32().toRadixString(16)}',
-    );
+  (c) =>
+      ((c.r - expected.r) * 255).abs() <= tolerance &&
+      ((c.g - expected.g) * 255).abs() <= tolerance &&
+      ((c.b - expected.b) * 255).abs() <= tolerance,
+  'within $tolerance/255 of #${expected.toARGB32().toRadixString(16)}',
+);
 
 /// A [size]×[size] image whose left [leftFraction] is [left] and the rest
 /// is [right].
@@ -52,8 +52,9 @@ void main() {
   test('returns the color of a solid image', () async {
     const red = Color(0xFFD32F2F);
 
-    final seed =
-        await seedColorFromImageProvider(MemoryImage(await solidPng(red)));
+    final seed = await seedColorFromImageProvider(
+      MemoryImage(await solidPng(red)),
+    );
 
     expect(seed, closeToColor(red));
   });
@@ -62,8 +63,9 @@ void main() {
     const blue = Color(0xFF1E88E5);
     const orange = Color(0xFFFB8C00);
 
-    final seed =
-        await seedColorFromImageProvider(await splitImage(blue, orange));
+    final seed = await seedColorFromImageProvider(
+      await splitImage(blue, orange),
+    );
 
     expect(seed, closeToColor(blue));
   });
