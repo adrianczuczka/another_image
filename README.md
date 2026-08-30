@@ -7,7 +7,7 @@ A single-screen Flutter app that fetches a random image from an API and shows it
 - [iOS – iPhone 17 simulator](demo/ios.mp4)
 - [Android – Pixel 8 emulator, Android 16](demo/android.mp4)
 
-Both clips show a cold start, several taps of "Another" in light mode, a switch to dark mode, and more taps. The Android clip also shows the error panel for one of the API's dead image URLs.
+Both clips show a cold start, several taps of "Another" in light mode, a switch to dark mode, and more taps.
 
 ## Features
 
