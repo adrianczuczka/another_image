@@ -1,5 +1,7 @@
 # Another Image
 
+[![CI](https://github.com/adrianczuczka/another_image/actions/workflows/ci.yml/badge.svg)](https://github.com/adrianczuczka/another_image/actions/workflows/ci.yml)
+
 A single-screen Flutter app that fetches a random image from an API and shows it as a centered square. The app theme is derived from the current image, so the background and button colors shift with every photo.
 
 ## Demo
@@ -8,6 +10,16 @@ A single-screen Flutter app that fetches a random image from an API and shows it
 - [Android – Pixel 8 emulator, Android 16](demo/android.mp4)
 
 Both clips show a cold start, several taps of "Another" in light mode, a switch to dark mode, and more taps.
+
+## Screenshots
+
+<p>
+  <img src="demo/screenshots/ios-light.png" width="180" alt="iOS, light mode">
+  <img src="demo/screenshots/ios-dark.png" width="180" alt="iOS, dark mode">
+  <img src="demo/screenshots/android-light.png" width="180" alt="Android 16, light mode">
+  <img src="demo/screenshots/android-dark.png" width="180" alt="Android 16, dark mode">
+</p>
+<img src="demo/screenshots/android-landscape.png" width="740" alt="Android 16, landscape">
 
 ## Features
 
