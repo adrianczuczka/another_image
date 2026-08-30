@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../state/random_image_controller.dart';
@@ -53,19 +54,16 @@ class _HomeScreenState extends State<HomeScreen> {
       cacheManager: widget.cacheManager,
     ).resolve(ImageConfiguration.empty);
     late final ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (ImageInfo info, _) {
-        info.dispose();
-        _stopWaitingForImage();
-        if (!mounted) return;
-        SemanticsService.sendAnnouncement(
-          View.of(context),
-          'New image loaded',
-          Directionality.of(context),
-        );
-      },
-      onError: (_, _) => _stopWaitingForImage(),
-    );
+    listener = ImageStreamListener((ImageInfo info, _) {
+      info.dispose();
+      _stopWaitingForImage();
+      if (!mounted) return;
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        'New image loaded',
+        Directionality.of(context),
+      );
+    }, onError: (_, _) => _stopWaitingForImage());
     _pendingImage = stream;
     _pendingImageListener = listener;
     stream.addListener(listener);
@@ -96,37 +94,54 @@ class _HomeScreenState extends State<HomeScreen> {
         // square only what's left of the height, so put them side by side.
         final sideBySide =
             MediaQuery.orientationOf(context) == Orientation.landscape;
-        return Scaffold(
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          body: SafeArea(
-            child: sideBySide
-                ? Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+        final theme = Theme.of(context);
+        final dark = theme.brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          // There's no AppBar to do this: keep the system bars transparent so
+          // the background runs edge to edge, with icons that contrast with
+          // the current scheme.
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: dark
+                ? Brightness.light
+                : Brightness.dark,
+            systemNavigationBarContrastEnforced: false,
+          ),
+          child: Scaffold(
+            backgroundColor: theme.colorScheme.primaryContainer,
+            body: SafeArea(
+              child: sideBySide
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Flexible(child: square),
+                          const SizedBox(width: 32),
+                          button,
+                        ],
+                      ),
+                    )
+                  : Column(
                       children: [
-                        Flexible(child: square),
-                        const SizedBox(width: 32),
-                        button,
-                      ],
-                    ),
-                  )
-                : Column(
-                    children: [
-                      Expanded(
-                        child: Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(32),
-                            child: square,
+                        Expanded(
+                          child: Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: square,
+                            ),
                           ),
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 32),
-                        child: button,
-                      ),
-                    ],
-                  ),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 32),
+                          child: button,
+                        ),
+                      ],
+                    ),
+            ),
           ),
         );
       },
@@ -176,10 +191,7 @@ class _AnotherButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 32),
         textStyle: Theme.of(context).textTheme.titleMedium,
       ),
-      child: const Text(
-        'Another',
-        semanticsLabel: 'Load another random image',
-      ),
+      child: const Text('Another', semanticsLabel: 'Load another random image'),
     );
   }
 }
@@ -203,10 +215,13 @@ class _ImageSquare extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    final fadeDuration =
-        reduceMotion ? Duration.zero : const Duration(milliseconds: 400);
+    final fadeDuration = reduceMotion
+        ? Duration.zero
+        : const Duration(milliseconds: 400);
     return AnimatedSwitcher(
-      duration: reduceMotion ? Duration.zero : const Duration(milliseconds: 250),
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 250),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       // The default layout builder loosens constraints, letting the image
@@ -218,39 +233,39 @@ class _ImageSquare extends StatelessWidget {
       child: switch (state) {
         RandomImageLoading() => const _Spinner(),
         RandomImageError(:final message) => _ErrorPanel(
-            message: message,
-            actionLabel: 'Try again',
-            onAction: onRetry,
-          ),
+          message: message,
+          actionLabel: 'Try again',
+          onAction: onRetry,
+        ),
         RandomImageLoaded(:final url) => Semantics(
-            key: ValueKey(url),
-            image: true,
-            label: 'Random photo from Unsplash',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: CachedNetworkImage(
-                imageUrl: url,
-                cacheManager: cacheManager,
-                fit: BoxFit.cover,
-                fadeInDuration: fadeDuration,
-                fadeOutDuration: fadeDuration,
-                progressIndicatorBuilder: (context, _, progress) => Center(
-                  child: CircularProgressIndicator(
-                    value: progress.progress,
-                    semanticsLabel: 'Downloading image',
-                  ),
+          key: ValueKey(url),
+          image: true,
+          label: 'Random photo from Unsplash',
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: CachedNetworkImage(
+              imageUrl: url,
+              cacheManager: cacheManager,
+              fit: BoxFit.cover,
+              fadeInDuration: fadeDuration,
+              fadeOutDuration: fadeDuration,
+              progressIndicatorBuilder: (context, _, progress) => Center(
+                child: CircularProgressIndicator(
+                  value: progress.progress,
+                  semanticsLabel: 'Downloading image',
                 ),
-                errorWidget: (context, _, _) => onImageFailed(url)
-                    ? const _Spinner()
-                    : _ErrorPanel(
-                        message: "This image couldn't be loaded",
-                        // Retrying a dead URL is pointless; offer a fresh one.
-                        actionLabel: 'Try another',
-                        onAction: onRetry,
-                      ),
               ),
+              errorWidget: (context, _, _) => onImageFailed(url)
+                  ? const _Spinner()
+                  : _ErrorPanel(
+                      message: "This image couldn't be loaded",
+                      // Retrying a dead URL is pointless; offer a fresh one.
+                      actionLabel: 'Try another',
+                      onAction: onRetry,
+                    ),
             ),
           ),
+        ),
       },
     );
   }
@@ -312,10 +327,7 @@ class _ErrorPanel extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 12),
-            child: TextButton(
-              onPressed: onAction,
-              child: Text(actionLabel),
-            ),
+            child: TextButton(onPressed: onAction, child: Text(actionLabel)),
           ),
         ],
       ),

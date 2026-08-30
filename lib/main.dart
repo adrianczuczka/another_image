@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'src/api/image_api.dart';
@@ -8,6 +9,10 @@ import 'src/theme/seed_color.dart';
 import 'src/ui/home_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Draw behind the system bars on Android 14 and below too; Android 15+
+  // enforces this and iOS always has. HomeScreen styles the bar icons.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   runApp(const AnotherImageApp());
 }
 
@@ -99,22 +104,24 @@ class _AnotherImageAppState extends State<AnotherImageApp>
   @override
   Widget build(BuildContext context) {
     final reduceMotion = WidgetsBinding
-        .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     return MaterialApp(
       title: 'Another Image',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: _seed),
-      ),
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: _seed)),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _seed,
           brightness: Brightness.dark,
         ),
       ),
-      themeAnimationDuration:
-          reduceMotion ? Duration.zero : const Duration(milliseconds: 600),
+      themeAnimationDuration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 600),
       home: HomeScreen(
         controller: _controller,
         cacheManager: widget.cacheManager,
