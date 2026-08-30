@@ -79,7 +79,7 @@ class RandomImageController extends ChangeNotifier {
   }
 
   Future<void> _fetch() async {
-    if (_fetching) return;
+    if (_fetching || _disposed) return;
     _fetching = true;
     _state = const RandomImageLoading();
     _notify();

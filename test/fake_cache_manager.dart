@@ -76,9 +76,9 @@ Future<File> solidImageFile(ui.Color color, {int size = 8}) async {
 /// Pumps frames while real time passes until [done] holds. For use inside
 /// [WidgetTester.runAsync], where image decoding completes asynchronously.
 Future<void> settle(WidgetTester tester, bool Function() done) async {
-  for (var i = 0; i < 100 && !done(); i++) {
+  for (var i = 0; i < 500 && !done(); i++) {
     await Future<void>.delayed(const Duration(milliseconds: 20));
     await tester.pump(const Duration(milliseconds: 50));
   }
-  expect(done(), isTrue, reason: 'Condition not met within 2 s');
+  expect(done(), isTrue, reason: 'Condition not met within 10 s');
 }

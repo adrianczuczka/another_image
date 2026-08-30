@@ -43,6 +43,9 @@ class ImageApi {
 
   static const Duration timeout = Duration(seconds: 10);
 
+  /// The only host the sizing parameters apply to; other URLs pass through.
+  static const String unsplashHost = 'images.unsplash.com';
+
   /// Resize parameters merged into returned Unsplash URLs (existing
   /// parameters are preserved; these win on conflict). The API hands out
   /// bare URLs that resolve to multi-MB originals; Unsplash's imgix params
@@ -84,6 +87,7 @@ class ImageApi {
     if (url is! String) throw ImageApiException(ImageApiFailure.malformed);
     try {
       final uri = Uri.parse(url);
+      if (uri.host != unsplashHost) return uri.toString();
       return uri
           .replace(queryParameters: {...uri.queryParameters, ...imageParams})
           .toString();

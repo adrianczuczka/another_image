@@ -58,9 +58,10 @@ flutter run
 flutter test
 ```
 
-Covers API response parsing and error mapping, the controller state machine including the duplicate re-roll, and widget-level fetch and error-retry flows.
+Covers API response parsing and failure classification, the controller state machine (duplicate re-roll, silent replacement of dead images, unexpected-error reporting), theme-seed sequencing, seed extraction from synthetic images, and widget-level fetch, error-retry, dead-image and layout flows.
 
 ## Out of scope
 
 - Localization: the UI copy is hard-coded English.
+- Image download timeouts: the API request gives up after 10 seconds, but a stalled image download keeps its progress indicator until you tap "Another", which is always live.
 - Cancelling downloads: tapping "Another" while an image is still downloading starts the next fetch immediately, but the abandoned download (a few hundred KB) runs to completion in the background. Real cancellation needs a custom cache manager and didn't seem worth it here.

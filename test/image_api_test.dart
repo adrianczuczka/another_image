@@ -52,6 +52,17 @@ void main() {
       },
     );
 
+    test('leaves non-Unsplash URLs untouched', () async {
+      final api = ImageApi(
+        client: MockClient(
+          (_) async =>
+              http.Response('{"url": "https://example.com/photo.jpg"}', 200),
+        ),
+      );
+
+      expect(await api.fetchRandomImageUrl(), 'https://example.com/photo.jpg');
+    });
+
     test('reports a non-200 response as a server error with its status', () {
       final api = ImageApi(
         client: MockClient((_) async => http.Response('oops', 503)),
