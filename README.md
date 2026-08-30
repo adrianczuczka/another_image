@@ -4,12 +4,15 @@ A single-screen Flutter app that fetches a random image from an API and shows it
 
 ## Demo
 
-_Demo video link goes here._
+- [iOS – iPhone 17 simulator](demo/ios.mp4)
+- [Android – Pixel 8 emulator, Android 16](demo/android.mp4)
+
+Both clips show a cold start, several taps of "Another" in light mode, a switch to dark mode, and more taps. The Android clip also shows the error panel for one of the API's dead image URLs.
 
 ## Features
 
-- Centered square image with rounded corners, cropped server-side to match the display.
-- Dynamic theming: after each image loads, a Material 3 color scheme is generated from it with `ColorScheme.fromImageProvider`, and the background animates to the new palette.
+- Centered square image with rounded corners, cropped server-side to match the display. In landscape the button moves beside the square instead of below it.
+- Dynamic theming: after each image loads, a Material 3 seed color is extracted from it (the same quantize-and-score pipeline as `ColorScheme.fromImageProvider`, run once at thumbnail size for both the light and dark schemes), and the background animates to the new palette.
 - "Another" button that fetches a fresh image, with a determinate download progress indicator.
 - Error handling for both API failures and broken image URLs, each with an inline retry and a 10-second request timeout.
 - System light and dark mode – both schemes are seeded from the same image.
@@ -22,6 +25,7 @@ lib/
   main.dart                              – app root, theme extraction and wiring
   src/api/image_api.dart                 – HTTP client for GET /image
   src/state/random_image_controller.dart – ChangeNotifier with loading/loaded/error states
+  src/theme/seed_color.dart              – seed color extraction from a decoded image
   src/ui/home_screen.dart                – the single screen
 ```
 
@@ -33,7 +37,7 @@ Things the implementation accounts for, found by probing the endpoint:
 
 - `GET /image` answers with a 307 redirect to `/image/`, so the client calls the trailing-slash path directly.
 - The API serves a small rotating pool of URLs and often returns the same URL twice in a row. The controller re-rolls up to two times when it receives the URL that's already on screen, so tapping "Another" doesn't look like a no-op.
-- Two of the ~15 URLs in the pool are dead Unsplash links (HTTP 404), so roughly one draw in seven hits a broken image – presumably by design. The image widget falls back to an error panel with a retry action, and theme extraction failures are non-fatal. Fetch errors and image-load errors are distinct states with distinct copy.
+- Three of the ~20 URLs in the pool are dead Unsplash links (HTTP 404), so roughly one draw in seven hits a broken image – presumably by design. The image widget falls back to an error panel with a retry action, and theme extraction failures are non-fatal. Fetch errors and image-load errors are distinct states with distinct copy.
 - The API returns bare Unsplash URLs that resolve to multi-MB originals. The client merges imgix parameters (`w=1200&h=1200&fit=crop&q=80&fm=jpg`) into the URL – preserving any parameters already present – to download a phone-sized square crop instead.
 
 Images are cached on disk by `cached_network_image`; theme extraction reads from the same cache, so each image is downloaded once.

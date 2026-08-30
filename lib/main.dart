@@ -93,6 +93,7 @@ class _AnotherImageAppState extends State<AnotherImageApp>
         .instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     return MaterialApp(
       title: 'Another Image',
+      debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: _seed),
