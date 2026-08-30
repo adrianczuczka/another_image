@@ -19,9 +19,13 @@ class RandomImageLoaded extends RandomImageState {
 }
 
 class RandomImageError extends RandomImageState {
-  const RandomImageError(this.message);
+  const RandomImageError(this.cause, {this.statusCode});
 
-  final String message;
+  /// What went wrong, or null for an unexpected (non-API) failure.
+  final ImageApiFailure? cause;
+
+  /// The HTTP status, for [ImageApiFailure.serverError].
+  final int? statusCode;
 }
 
 /// Owns the fetch lifecycle for the single screen.
@@ -93,9 +97,17 @@ class RandomImageController extends ChangeNotifier {
       _currentUrl = url;
       _state = RandomImageLoaded(url);
     } on ImageApiException catch (e) {
-      _state = RandomImageError(e.message);
-    } catch (_) {
-      _state = const RandomImageError('Something went wrong. Try again.');
+      _state = RandomImageError(e.failure, statusCode: e.statusCode);
+    } catch (error, stack) {
+      // Not an API problem but a bug: report it where developers and crash
+      // reporters see it, and keep the screen usable.
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'another_image',
+        context: ErrorDescription('while fetching a random image'),
+      ));
+      _state = const RandomImageError(null);
     }
     _replacingUrl = null;
     _fetching = false;

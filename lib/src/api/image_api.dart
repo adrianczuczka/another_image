@@ -2,15 +2,31 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// Thrown when the image API returns an unusable response. [message] is
-/// user-presentable copy, shown verbatim in the error panel.
-class ImageApiException implements Exception {
-  ImageApiException(this.message);
+/// Why a request to the image API failed. The UI decides what to tell the
+/// user; this layer only classifies.
+enum ImageApiFailure {
+  /// No usable response: offline, DNS, TLS, or the request timed out.
+  unreachable,
 
-  final String message;
+  /// A response with a status other than 200.
+  serverError,
+
+  /// A 200 whose body wasn't the expected `{"url": "..."}`.
+  malformed,
+}
+
+/// Thrown when the image API returns an unusable response.
+class ImageApiException implements Exception {
+  ImageApiException(this.failure, {this.statusCode});
+
+  final ImageApiFailure failure;
+
+  /// The HTTP status, for [ImageApiFailure.serverError].
+  final int? statusCode;
 
   @override
-  String toString() => 'ImageApiException: $message';
+  String toString() =>
+      'ImageApiException($failure${statusCode == null ? '' : ', HTTP $statusCode'})';
 }
 
 /// Client for the random image API.
@@ -47,26 +63,34 @@ class ImageApi {
     final http.Response response;
     try {
       response = await _client.get(_endpoint).timeout(timeout);
-    } catch (_) {
-      throw ImageApiException(
-        "Couldn't reach the image service. Check your connection and try again.",
-      );
+    } on Exception {
+      // ClientException, SocketException, TimeoutException, and friends.
+      throw ImageApiException(ImageApiFailure.unreachable);
     }
     if (response.statusCode != 200) {
       throw ImageApiException(
-        'The image service had a problem (HTTP ${response.statusCode}). Try again.',
+        ImageApiFailure.serverError,
+        statusCode: response.statusCode,
       );
     }
+    final Object? body;
     try {
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final uri = Uri.parse(body['url'] as String);
-      return uri.replace(
-        queryParameters: {...uri.queryParameters, ...imageParams},
-      ).toString();
-    } catch (_) {
-      throw ImageApiException(
-        'The image service sent an unexpected response. Try again.',
-      );
+      body = jsonDecode(response.body);
+    } on FormatException {
+      throw ImageApiException(ImageApiFailure.malformed);
+    }
+    final url = body is Map<String, Object?> ? body['url'] : null;
+    if (url is! String) throw ImageApiException(ImageApiFailure.malformed);
+    try {
+      final uri = Uri.parse(url);
+      return uri
+          .replace(queryParameters: {...uri.queryParameters, ...imageParams})
+          .toString();
+    } on FormatException {
+      throw ImageApiException(ImageApiFailure.malformed);
+    } on ArgumentError {
+      // Uri.queryParameters rejects malformed percent-encoding this way.
+      throw ImageApiException(ImageApiFailure.malformed);
     }
   }
 

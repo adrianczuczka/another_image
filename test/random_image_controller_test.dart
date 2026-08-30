@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:another_image/src/api/image_api.dart';
 import 'package:another_image/src/state/random_image_controller.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_image_api.dart';
@@ -21,24 +22,30 @@ void main() {
 
   test('emits error state when the API fails', () async {
     final controller =
-        RandomImageController(FakeImageApi([ImageApiException('down')]));
+        RandomImageController(FakeImageApi([ImageApiException(ImageApiFailure.unreachable)]));
 
     await controller.fetch();
 
-    expect((controller.state as RandomImageError).message, 'down');
+    expect(
+      (controller.state as RandomImageError).cause,
+      ImageApiFailure.unreachable,
+    );
   });
 
-  test('surfaces a generic error for unexpected exceptions', () async {
+  test('reports unexpected exceptions and shows a causeless error', () async {
+    final reported = <FlutterErrorDetails>[];
+    final previousHandler = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = previousHandler);
     final controller = RandomImageController(
       FakeImageApi([const FormatException('bad uri')]),
     );
 
     await controller.fetch();
 
-    expect(
-      (controller.state as RandomImageError).message,
-      'Something went wrong. Try again.',
-    );
+    expect((controller.state as RandomImageError).cause, isNull);
+    expect(reported, hasLength(1));
+    expect(reported.single.exception, isA<FormatException>());
   });
 
   test('re-rolls when the API returns the current URL again', () async {
@@ -66,7 +73,7 @@ void main() {
   });
 
   test('keeps the duplicate when a re-roll fails', () async {
-    final api = FakeImageApi(['url-a', 'url-a', ImageApiException('down')]);
+    final api = FakeImageApi(['url-a', 'url-a', ImageApiException(ImageApiFailure.unreachable)]);
     final controller = RandomImageController(api);
 
     await controller.fetch();
@@ -78,7 +85,7 @@ void main() {
 
   test('recovers from error on the next fetch', () async {
     final controller = RandomImageController(
-      FakeImageApi([ImageApiException('down'), 'url-a']),
+      FakeImageApi([ImageApiException(ImageApiFailure.unreachable), 'url-a']),
     );
 
     await controller.fetch();

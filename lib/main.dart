@@ -5,6 +5,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'src/api/image_api.dart';
 import 'src/state/random_image_controller.dart';
+import 'src/state/theme_seed_controller.dart';
 import 'src/theme/seed_color.dart';
 import 'src/ui/home_screen.dart';
 
@@ -15,10 +16,6 @@ void main() {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   runApp(const AnotherImageApp());
 }
-
-/// Extracts a seed color from a loaded image, used to derive the app's
-/// light and dark themes. Injectable so tests can avoid real image decoding.
-typedef SeedExtractor = Future<Color> Function(String url);
 
 Future<Color> _seedFromNetworkImage(String url) {
   // Shares the disk cache with the CachedNetworkImage widget showing the
@@ -36,6 +33,7 @@ class AnotherImageApp extends StatefulWidget {
     this.cacheManager,
   });
 
+  /// Collaborators are injectable for tests; null means the real one.
   final ImageApi? api;
   final SeedExtractor? seedExtractor;
 
@@ -48,30 +46,28 @@ class AnotherImageApp extends StatefulWidget {
 
 class _AnotherImageAppState extends State<AnotherImageApp>
     with WidgetsBindingObserver {
-  static const _fallbackSeed = Color(0xFF5C6BC0);
-
+  // Read once; rebuilding AnotherImageApp with different arguments isn't
+  // supported (only tests pass any).
   late final ImageApi _api = widget.api ?? ImageApi();
-  late final RandomImageController _controller = RandomImageController(_api);
-  late final SeedExtractor _extractSeed =
-      widget.seedExtractor ?? _seedFromNetworkImage;
-
-  Color _seed = _fallbackSeed;
-  int _extractionSeq = 0;
+  late final RandomImageController _images = RandomImageController(_api);
+  late final ThemeSeedController _themeSeed = ThemeSeedController(
+    _images,
+    widget.seedExtractor ?? _seedFromNetworkImage,
+  );
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller.addListener(_onStateChanged);
-    _controller.fetch();
+    _images.fetch();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _controller.removeListener(_onStateChanged);
-    _controller.dispose();
-    _api.dispose();
+    _themeSeed.dispose();
+    _images.dispose();
+    if (widget.api == null) _api.dispose(); // Only what this widget created.
     super.dispose();
   }
 
@@ -82,25 +78,6 @@ class _AnotherImageAppState extends State<AnotherImageApp>
     setState(() {});
   }
 
-  void _onStateChanged() {
-    final state = _controller.state;
-    if (state is RandomImageLoaded) {
-      _updateSeed(state.url);
-    }
-  }
-
-  Future<void> _updateSeed(String url) async {
-    final seq = ++_extractionSeq;
-    try {
-      final seed = await _extractSeed(url);
-      if (!mounted || seq != _extractionSeq) return;
-      setState(() => _seed = seed);
-    } catch (_) {
-      // The image couldn't be decoded (e.g. a dead URL in the API's pool).
-      // Keep the previous background rather than surfacing a second error.
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final features =
@@ -109,29 +86,31 @@ class _AnotherImageAppState extends State<AnotherImageApp>
     // Both schemes derive from the same seed; the system "increase contrast"
     // setting switches them to their high-contrast variants.
     final contrastLevel = features.highContrast ? 1.0 : 0.0;
-    return MaterialApp(
-      title: 'Another Image',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.system,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _seed,
-          contrastLevel: contrastLevel,
+    return ListenableBuilder(
+      listenable: _themeSeed,
+      builder: (context, _) => MaterialApp(
+        title: 'Another Image',
+        debugShowCheckedModeBanner: false,
+        themeMode: ThemeMode.system,
+        theme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: _themeSeed.seed,
+            contrastLevel: contrastLevel,
+          ),
         ),
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: _seed,
-          brightness: Brightness.dark,
-          contrastLevel: contrastLevel,
+        darkTheme: ThemeData(
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: _themeSeed.seed,
+            brightness: Brightness.dark,
+            contrastLevel: contrastLevel,
+          ),
         ),
-      ),
-      themeAnimationDuration: reduceMotion
-          ? Duration.zero
-          : const Duration(milliseconds: 600),
-      home: HomeScreen(
-        controller: _controller,
-        cacheManager: widget.cacheManager,
+        themeAnimationDuration:
+            reduceMotion ? Duration.zero : const Duration(milliseconds: 600),
+        home: HomeScreen(
+          controller: _images,
+          cacheManager: widget.cacheManager,
+        ),
       ),
     );
   }

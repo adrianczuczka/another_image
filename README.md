@@ -25,6 +25,7 @@ lib/
   main.dart                              – app root, theme extraction and wiring
   src/api/image_api.dart                 – HTTP client for GET /image
   src/state/random_image_controller.dart – ChangeNotifier with loading/loaded/error states
+  src/state/theme_seed_controller.dart   – seed color of the latest loaded image
   src/theme/seed_color.dart              – seed color extraction from a decoded image
   src/ui/home_screen.dart                – the single screen
 ```

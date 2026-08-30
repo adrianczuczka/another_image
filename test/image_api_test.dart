@@ -6,6 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+Matcher throwsFailure(ImageApiFailure failure, {int? statusCode}) => throwsA(
+      isA<ImageApiException>()
+          .having((e) => e.failure, 'failure', failure)
+          .having((e) => e.statusCode, 'statusCode', statusCode),
+    );
+
 void main() {
   group('ImageApi.fetchRandomImageUrl', () {
     test('returns the URL with sizing params merged in', () async {
@@ -42,42 +48,52 @@ void main() {
       expect(url.queryParameters['w'], ImageApi.imageParams['w']);
     });
 
-    test('throws on a non-200 response', () {
+    test('reports a non-200 response as a server error with its status', () {
       final api = ImageApi(
-        client: MockClient((_) async => http.Response('oops', 500)),
+        client: MockClient((_) async => http.Response('oops', 503)),
       );
 
-      expect(api.fetchRandomImageUrl, throwsA(isA<ImageApiException>()));
+      expect(
+        api.fetchRandomImageUrl,
+        throwsFailure(ImageApiFailure.serverError, statusCode: 503),
+      );
     });
 
-    test('throws on a malformed body', () {
+    test('reports a non-JSON body as malformed', () {
       final api = ImageApi(
         client: MockClient((_) async => http.Response('not json', 200)),
       );
 
-      expect(api.fetchRandomImageUrl, throwsA(isA<ImageApiException>()));
+      expect(api.fetchRandomImageUrl, throwsFailure(ImageApiFailure.malformed));
     });
 
-    test('throws on a body missing the url field', () {
+    test('reports a body missing the url field as malformed', () {
       final api = ImageApi(
         client: MockClient((_) async => http.Response('{"other": 1}', 200)),
       );
 
-      expect(api.fetchRandomImageUrl, throwsA(isA<ImageApiException>()));
+      expect(api.fetchRandomImageUrl, throwsFailure(ImageApiFailure.malformed));
     });
 
-    test('throws on an unparseable url instead of leaking a FormatException',
-        () {
+    test('reports a non-string url as malformed', () {
+      final api = ImageApi(
+        client: MockClient((_) async => http.Response('{"url": 42}', 200)),
+      );
+
+      expect(api.fetchRandomImageUrl, throwsFailure(ImageApiFailure.malformed));
+    });
+
+    test('reports an unparseable url as malformed', () {
       final api = ImageApi(
         client: MockClient(
           (_) async => http.Response('{"url": "http://[bad"}', 200),
         ),
       );
 
-      expect(api.fetchRandomImageUrl, throwsA(isA<ImageApiException>()));
+      expect(api.fetchRandomImageUrl, throwsFailure(ImageApiFailure.malformed));
     });
 
-    test('times out a stalled request', () {
+    test('reports a stalled request as unreachable after the timeout', () {
       fakeAsync((fake) {
         final api = ImageApi(
           // A request that never completes.
@@ -90,24 +106,22 @@ void main() {
 
         fake.elapse(ImageApi.timeout + const Duration(milliseconds: 1));
 
-        expect(caught, isA<ImageApiException>());
+        expect(
+          caught,
+          isA<ImageApiException>()
+              .having((e) => e.failure, 'failure', ImageApiFailure.unreachable),
+        );
       });
     });
 
-    test('wraps network errors in user-presentable copy', () async {
+    test('reports network errors as unreachable', () {
       final api = ImageApi(
         client: MockClient((_) async => throw http.ClientException('boom')),
       );
 
-      await expectLater(
+      expect(
         api.fetchRandomImageUrl,
-        throwsA(
-          isA<ImageApiException>().having(
-            (e) => e.message,
-            'message',
-            isNot(contains('boom')),
-          ),
-        ),
+        throwsFailure(ImageApiFailure.unreachable),
       );
     });
   });

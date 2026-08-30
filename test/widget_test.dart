@@ -34,10 +34,35 @@ void main() {
     expect(api.calls, 2);
   });
 
+  testWidgets('derives both themes from the extracted seed', (tester) async {
+    final api = FakeImageApi(['https://example.com/a']);
+    await tester.pumpWidget(
+      AnotherImageApp(
+        api: api,
+        seedExtractor: (_) async => Colors.teal,
+        cacheManager: FakeCacheManager(),
+      ),
+    );
+    await tester.pump(); // The fetch completes.
+    await tester.pump(); // The extraction completes.
+    await tester.pump(); // The themes rebuild.
+
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(
+      app.theme!.colorScheme.primary,
+      ColorScheme.fromSeed(seedColor: Colors.teal).primary,
+    );
+    expect(
+      app.darkTheme!.colorScheme.primary,
+      ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark)
+          .primary,
+    );
+  });
+
   testWidgets('shows an error panel with retry when the API fails',
       (tester) async {
     final api = FakeImageApi(
-      [ImageApiException('down'), 'https://example.com/a'],
+      [ImageApiException(ImageApiFailure.unreachable), 'https://example.com/a'],
     );
     await tester.pumpWidget(
       AnotherImageApp(
@@ -48,7 +73,10 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('down'), findsOneWidget);
+    expect(
+      find.textContaining("Couldn't reach the image service"),
+      findsOneWidget,
+    );
     expect(find.byType(CachedNetworkImage), findsNothing);
 
     await tester.tap(find.widgetWithText(TextButton, 'Try again'));

@@ -4,6 +4,7 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+import '../api/image_api.dart';
 import '../state/random_image_controller.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -178,12 +179,15 @@ class _Square extends StatelessWidget {
 class _AnotherButton extends StatelessWidget {
   const _AnotherButton({required this.onPressed});
 
+  /// Shortest side from which the button grows to match the larger square.
+  static const double tabletBreakpoint = 600;
+
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    // Tablets get a larger button to keep pace with the larger square.
-    final large = MediaQuery.sizeOf(context).shortestSide >= 600;
+    final large =
+        MediaQuery.sizeOf(context).shortestSide >= tabletBreakpoint;
     final textTheme = Theme.of(context).textTheme;
     return FilledButton(
       // Always live: the controller ignores re-entrant calls, and disabling
@@ -235,8 +239,8 @@ class _ImageSquare extends StatelessWidget {
       ),
       child: switch (state) {
         RandomImageLoading() => const _Spinner(),
-        RandomImageError(:final message) => _ErrorPanel(
-          message: message,
+        RandomImageError(:final cause, :final statusCode) => _ErrorPanel(
+          message: _fetchErrorCopy(cause, statusCode),
           actionLabel: 'Try again',
           onAction: onRetry,
         ),
@@ -273,6 +277,18 @@ class _ImageSquare extends StatelessWidget {
     );
   }
 }
+
+/// User copy for a failed fetch; the API layer only reports the cause.
+String _fetchErrorCopy(ImageApiFailure? cause, int? statusCode) =>
+    switch (cause) {
+      ImageApiFailure.unreachable =>
+        "Couldn't reach the image service. Check your connection and try again.",
+      ImageApiFailure.serverError =>
+        'The image service had a problem (HTTP $statusCode). Try again.',
+      ImageApiFailure.malformed =>
+        'The image service sent an unexpected response. Try again.',
+      null => 'Something went wrong. Try again.',
+    };
 
 class _Spinner extends StatelessWidget {
   const _Spinner();
