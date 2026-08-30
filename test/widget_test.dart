@@ -117,8 +117,31 @@ void main() {
     final button = tester.getRect(find.byType(FilledButton));
 
     expect(square.width, 560); // Capped, not the full 800 - 64.
+    expect(button.height, 64); // Tablet-sized to match.
     expect(button.top, greaterThan(square.bottom));
     expect(button.center.dx, closeTo(square.center.dx, 1));
+  });
+
+  testWidgets('fills the width on a phone with a regular-size button',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = FakeImageApi(['https://example.com/a']);
+    await tester.pumpWidget(
+      AnotherImageApp(
+        api: api,
+        seedExtractor: stubSeedExtractor,
+        cacheManager: FakeCacheManager(),
+      ),
+    );
+    await tester.pump();
+
+    final square = tester.getRect(find.byType(AspectRatio));
+    final button = tester.getRect(find.byType(FilledButton));
+
+    expect(square.width, 390 - 64);
+    expect(button.height, 52);
   });
 
   testWidgets('places the button beside the square in landscape',
@@ -140,6 +163,7 @@ void main() {
     final button = tester.getRect(find.byType(FilledButton));
 
     expect(square.height, 560); // Capped; would be 800 - 32 uncapped.
+    expect(button.height, 64);
     expect(button.left, greaterThan(square.right));
     expect(button.center.dy, closeTo(square.center.dy, 1));
   });

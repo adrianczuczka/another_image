@@ -182,14 +182,17 @@ class _AnotherButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Tablets get a larger button to keep pace with the larger square.
+    final large = MediaQuery.sizeOf(context).shortestSide >= 600;
+    final textTheme = Theme.of(context).textTheme;
     return FilledButton(
       // Always live: the controller ignores re-entrant calls, and disabling
       // would flash the button grey on each tap.
       onPressed: onPressed,
       style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 52),
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        textStyle: Theme.of(context).textTheme.titleMedium,
+        minimumSize: Size(0, large ? 64 : 52),
+        padding: EdgeInsets.symmetric(horizontal: large ? 48 : 32),
+        textStyle: large ? textTheme.titleLarge : textTheme.titleMedium,
       ),
       child: const Text('Another', semanticsLabel: 'Load another random image'),
     );

@@ -16,7 +16,7 @@ Both clips show a cold start, several taps of "Another" in light mode, a switch 
 - "Another" button that fetches a fresh image, with a determinate download progress indicator.
 - Error handling for both API failures and broken image URLs, each with an inline retry and a 10-second request timeout.
 - System light and dark mode – both schemes are seeded from the same image.
-- Accessibility: semantic labels on the image, button, and loading states; a screen-reader announcement when a new image loads and a live-region error panel; animations are disabled when the system reduce-motion setting is on; the error panel scrolls instead of overflowing at large font scales.
+- Accessibility: semantic labels on the image, button, and loading states; a screen-reader announcement once a new image has rendered and a live-region error panel; animations are disabled when the system reduce-motion setting is on; both color schemes switch to their high-contrast variants when the system increase-contrast setting is on; the error panel scrolls instead of overflowing at large font scales.
 
 ## Architecture
 
@@ -37,12 +37,14 @@ Things the implementation accounts for, found by probing the endpoint:
 
 - `GET /image` answers with a 307 redirect to `/image/`, so the client calls the trailing-slash path directly.
 - The API serves a small rotating pool of URLs and often returns the same URL twice in a row. The controller re-rolls up to two times when it receives the URL that's already on screen, so tapping "Another" doesn't look like a no-op.
-- Three of the ~20 URLs in the pool are dead Unsplash links (HTTP 404), so roughly one draw in seven hits a broken image – presumably by design. The image widget falls back to an error panel with a retry action, and theme extraction failures are non-fatal. Fetch errors and image-load errors are distinct states with distinct copy.
+- Three of the ~20 URLs in the pool are dead Unsplash links (HTTP 404), so roughly one draw in seven hits a broken image – presumably by design. The first failure after each tap is answered by silently fetching a replacement; a second failure shows an error panel with a "Try another" action. Theme extraction failures are non-fatal. Fetch errors and image-load errors are distinct states with distinct copy.
 - The API returns bare Unsplash URLs that resolve to multi-MB originals. The client merges imgix parameters (`w=1200&h=1200&fit=crop&q=80&fm=jpg`) into the URL – preserving any parameters already present – to download a phone-sized square crop instead.
 
 Images are cached on disk by `cached_network_image`; theme extraction reads from the same cache, so each image is downloaded once.
 
 ## Run
+
+Requires Flutter 3.44 or newer (Dart 3.12), the version CI pins.
 
 ```sh
 flutter pub get
@@ -56,3 +58,8 @@ flutter test
 ```
 
 Covers API response parsing and error mapping, the controller state machine including the duplicate re-roll, and widget-level fetch and error-retry flows.
+
+## Out of scope
+
+- Localization: the UI copy is hard-coded English.
+- Cancelling downloads: tapping "Another" while an image is still downloading starts the next fetch immediately, but the abandoned download (a few hundred KB) runs to completion in the background. Real cancellation needs a custom cache manager and didn't seem worth it here.

@@ -77,8 +77,8 @@ class _AnotherImageAppState extends State<AnotherImageApp>
 
   @override
   void didChangeAccessibilityFeatures() {
-    // Re-read platformDispatcher.accessibilityFeatures in build, so a
-    // mid-session reduce-motion toggle takes effect.
+    // Re-read platformDispatcher.accessibilityFeatures in build, so
+    // mid-session reduce-motion and contrast toggles take effect.
     setState(() {});
   }
 
@@ -103,20 +103,27 @@ class _AnotherImageAppState extends State<AnotherImageApp>
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = WidgetsBinding
-        .instance
-        .platformDispatcher
-        .accessibilityFeatures
-        .disableAnimations;
+    final features =
+        WidgetsBinding.instance.platformDispatcher.accessibilityFeatures;
+    final reduceMotion = features.disableAnimations;
+    // Both schemes derive from the same seed; the system "increase contrast"
+    // setting switches them to their high-contrast variants.
+    final contrastLevel = features.highContrast ? 1.0 : 0.0;
     return MaterialApp(
       title: 'Another Image',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.system,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: _seed)),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: _seed,
+          contrastLevel: contrastLevel,
+        ),
+      ),
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: _seed,
           brightness: Brightness.dark,
+          contrastLevel: contrastLevel,
         ),
       ),
       themeAnimationDuration: reduceMotion

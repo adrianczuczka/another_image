@@ -47,22 +47,26 @@ class FakeCacheManager implements BaseCacheManager {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
 }
 
-/// A [size]×[size] PNG filled with [color], written to a temp file.
-Future<File> solidImageFile(ui.Color color, {int size = 8}) async {
+/// A [size]×[size] PNG filled with [color].
+Future<Uint8List> solidPng(ui.Color color, {int size = 8}) async {
   final recorder = ui.PictureRecorder();
   ui.Canvas(recorder).drawRect(
     ui.Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
     ui.Paint()..color = color,
   );
   final image = await recorder.endRecording().toImage(size, size);
-  final Uint8List bytes;
   try {
-    bytes = (await image.toByteData(format: ui.ImageByteFormat.png))!
+    return (await image.toByteData(format: ui.ImageByteFormat.png))!
         .buffer
         .asUint8List();
   } finally {
     image.dispose();
   }
+}
+
+/// [solidPng] written to a temp file.
+Future<File> solidImageFile(ui.Color color, {int size = 8}) async {
+  final bytes = await solidPng(color, size: size);
   final dir = await io.Directory.systemTemp.createTemp('another_image_test');
   final path = '${dir.path}/image.png';
   await io.File(path).writeAsBytes(bytes);
