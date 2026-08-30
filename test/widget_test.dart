@@ -47,4 +47,43 @@ void main() {
     expect(api.calls, 2);
     expect(find.byType(CachedNetworkImage), findsOneWidget);
   });
+
+  testWidgets('stacks the button below the square in portrait',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = FakeImageApi(['https://example.com/a']);
+    await tester.pumpWidget(
+      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
+    );
+    await tester.pump();
+
+    expect(find.byType(AspectRatio), findsOneWidget);
+    final square = tester.getRect(find.byType(AspectRatio));
+    final button = tester.getRect(find.byType(FilledButton));
+
+    expect(square.width, 560); // Capped, not the full 800 - 64.
+    expect(button.top, greaterThan(square.bottom));
+    expect(button.center.dx, closeTo(square.center.dx, 1));
+  });
+
+  testWidgets('places the button beside the square in landscape',
+      (tester) async {
+    tester.view.physicalSize = const Size(1600, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = FakeImageApi(['https://example.com/a']);
+    await tester.pumpWidget(
+      AnotherImageApp(api: api, seedExtractor: stubSeedExtractor),
+    );
+    await tester.pump();
+
+    final square = tester.getRect(find.byType(AspectRatio));
+    final button = tester.getRect(find.byType(FilledButton));
+
+    expect(square.height, 560); // Capped; would be 800 - 32 uncapped.
+    expect(button.left, greaterThan(square.right));
+    expect(button.center.dy, closeTo(square.center.dy, 1));
+  });
 }

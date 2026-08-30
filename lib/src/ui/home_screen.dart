@@ -40,61 +40,107 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
+        final square = _Square(
+          child: _ImageSquare(
+            state: widget.controller.state,
+            onRetry: widget.controller.fetch,
+          ),
+        );
+        final button = _AnotherButton(onPressed: widget.controller.fetch);
+        // Stacking the button under the square in landscape leaves the
+        // square only what's left of the height, so put them side by side.
+        final sideBySide =
+            MediaQuery.orientationOf(context) == Orientation.landscape;
         return Scaffold(
-          backgroundColor: colorScheme.primaryContainer,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           body: SafeArea(
-            child: Column(
-              children: [
-                Expanded(
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        // A persistent surface so the square's footprint is
-                        // stable across loading, image, and error states.
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest
-                                .withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          child: _ImageSquare(
-                            state: widget.controller.state,
-                            onRetry: widget.controller.fetch,
+            child: sideBySide
+                ? Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(child: square),
+                        const SizedBox(width: 32),
+                        button,
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: square,
                           ),
                         ),
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 32),
+                        child: button,
+                      ),
+                    ],
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 32),
-                  child: FilledButton(
-                    // Always live: the controller ignores re-entrant calls,
-                    // and disabling would flash the button grey on each tap.
-                    onPressed: widget.controller.fetch,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(0, 52),
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
-                      textStyle: theme.textTheme.titleMedium,
-                    ),
-                    child: const Text(
-                      'Another',
-                      semanticsLabel: 'Load another random image',
-                    ),
-                  ),
-                ),
-              ],
-            ),
           ),
         );
       },
+    );
+  }
+}
+
+/// The image area: always square, capped on large screens so it doesn't
+/// dwarf the button, with a persistent surface so its footprint is stable
+/// across loading, image, and error states.
+class _Square extends StatelessWidget {
+  const _Square({required this.child});
+
+  static const double maxSize = 560;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: maxSize, maxHeight: maxSize),
+      child: AspectRatio(
+        aspectRatio: 1,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _AnotherButton extends StatelessWidget {
+  const _AnotherButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      // Always live: the controller ignores re-entrant calls, and disabling
+      // would flash the button grey on each tap.
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(0, 52),
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        textStyle: Theme.of(context).textTheme.titleMedium,
+      ),
+      child: const Text(
+        'Another',
+        semanticsLabel: 'Load another random image',
+      ),
     );
   }
 }
