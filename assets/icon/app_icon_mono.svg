@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Monochrome glyph for Android themed icons: the mountains and sun from
+       the foreground as a single-colour silhouette, no card. The launcher
+       supplies the colour; only the alpha channel matters. -->
+  <g transform="translate(512 468) scale(0.96) translate(-512 -512)" fill="#FFFFFF">
+    <circle cx="612" cy="392" r="58"/>
+    <path d="M420 778 L620 520 L778 700 L778 778 Z"/>
+    <path d="M246 778 L246 662 L462 428 L742 778 Z"/>
+  </g>
+</svg>
