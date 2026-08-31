@@ -33,7 +33,7 @@ void main() {
     expect(api.calls, 1);
     expect(find.byType(CachedNetworkImage), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.tap(find.byIcon(Icons.shuffle));
     await tester.pump();
     await tester.pump();
 
@@ -134,7 +134,7 @@ void main() {
       expect(api.calls, 2);
       expect(find.text(imageFailedCopy), findsNothing);
 
-      await tester.tap(find.byIcon(Icons.refresh));
+      await tester.tap(find.byIcon(Icons.shuffle));
       await settle(
         tester,
         () => find.text(imageFailedCopy).evaluate().isNotEmpty,
@@ -164,7 +164,7 @@ void main() {
     final image = tester.getRect(find.byType(CachedNetworkImage));
     expect(image, const Rect.fromLTWH(0, 0, 800, 1600));
 
-    final refresh = tester.getRect(find.byIcon(Icons.refresh));
+    final refresh = tester.getRect(find.byIcon(Icons.shuffle));
     expect(refresh.center.dx, greaterThan(800 * 0.8)); // Top-right corner.
     expect(refresh.center.dy, lessThan(100));
   });
@@ -187,7 +187,7 @@ void main() {
 
     final image = tester.getRect(find.byType(CachedNetworkImage));
     expect(image, const Rect.fromLTWH(0, 0, 390, 844));
-    expect(find.byIcon(Icons.refresh), findsOneWidget);
+    expect(find.byIcon(Icons.shuffle), findsOneWidget);
   });
 
   testWidgets('fills the screen with the image in landscape', (
@@ -209,7 +209,7 @@ void main() {
     final image = tester.getRect(find.byType(CachedNetworkImage));
     expect(image, const Rect.fromLTWH(0, 0, 1600, 800));
 
-    final refresh = tester.getRect(find.byIcon(Icons.refresh));
+    final refresh = tester.getRect(find.byIcon(Icons.shuffle));
     expect(refresh.center.dx, greaterThan(1600 * 0.8)); // Top-right corner.
     expect(refresh.center.dy, lessThan(100));
   });

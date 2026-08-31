@@ -173,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // calls, and disabling would flash the icon grey on
                         // each tap.
                         onPressed: widget.controller.fetch,
-                        icon: const Icon(Icons.refresh),
+                        icon: const Icon(Icons.shuffle),
                         color: Colors.white,
                         iconSize: 28,
                         tooltip: 'Load another random image',
