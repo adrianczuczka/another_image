@@ -277,15 +277,36 @@ class _ImageContent extends StatelessWidget {
           key: ValueKey(url),
           imageUrl: url,
           cacheManager: cacheManager,
-          fit: BoxFit.cover,
           fadeInDuration: fadeDuration,
           fadeOutDuration: fadeDuration,
           // Only the loaded picture is an image to assistive tech; the
           // progress and failure states describe themselves.
-          imageBuilder: (context, imageProvider) => Image(
-            image: imageProvider,
-            fit: BoxFit.cover,
-            semanticLabel: 'Random photo from Unsplash',
+          imageBuilder: (context, imageProvider) => Stack(
+            fit: StackFit.expand,
+            children: [
+              // The letterbox filler: the same photo cover-cropped and
+              // blurred, so the bars around the contained photo are its own
+              // colors – no download or decode beyond the sharp copy's.
+              // Decorative only; the sharp copy below carries the semantics.
+              ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(
+                  sigmaX: 32,
+                  sigmaY: 32,
+                  tileMode: ui.TileMode.clamp,
+                ),
+                child: Image(
+                  image: imageProvider,
+                  fit: BoxFit.cover,
+                  excludeFromSemantics: true,
+                ),
+              ),
+              // The photo itself, whole – contain never crops.
+              Image(
+                image: imageProvider,
+                fit: BoxFit.contain,
+                semanticLabel: 'Random photo from Unsplash',
+              ),
+            ],
           ),
           progressIndicatorBuilder: (context, _, progress) => Center(
             child: CircularProgressIndicator(
