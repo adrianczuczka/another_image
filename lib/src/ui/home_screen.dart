@@ -36,8 +36,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   ImageStream? _pendingImage;
   ImageStreamListener? _pendingImageListener;
-  /// Last URL whose first frame actually rendered – keys the ambient glow
-  /// and de-dups screen-reader announcements.
+
+  /// Last URL whose first frame actually rendered – de-dups screen-reader
+  /// announcements.
   String? _shownUrl;
 
   @override
@@ -96,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       // The duplicate re-roll can keep the same URL; don't claim novelty.
       final isRepeat = url == _shownUrl;
-      setState(() => _shownUrl = url); // Re-aims the ambient glow.
+      _shownUrl = url;
       SemanticsService.sendAnnouncement(
         View.of(context),
         isRepeat ? 'Same image shown again' : 'New image loaded',
@@ -120,100 +121,67 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
-        final frame = _ImageFrame(
-          glow: _AmbientGlow(
-            url: _shownUrl,
-            cacheManager: widget.cacheManager,
-          ),
-          child: _ImageContent(
-            state: widget.controller.state,
-            cacheManager: widget.cacheManager,
-            onRetry: widget.controller.fetch,
-            onImageFailed: widget.controller.imageFailed,
-          ),
-        );
-        final button = _AnotherButton(onPressed: widget.controller.fetch);
-        // Stacking the button under the frame in landscape leaves the
-        // frame only what's left of the height, so put them side by side.
-        final sideBySide =
-            MediaQuery.orientationOf(context) == Orientation.landscape;
         final colorScheme = Theme.of(context).colorScheme;
-        // The bar icons sit over the gradient's corners, so contrast against
-        // those corner colors – which the seeded scheme picks, not the
-        // theme's overall brightness (the high-contrast variants shift the
-        // container tones).
-        final topBrightness = ThemeData.estimateBrightnessForColor(
-          colorScheme.primaryContainer,
-        );
-        final bottomBrightness = ThemeData.estimateBrightnessForColor(
-          colorScheme.tertiaryContainer,
-        );
         return AnnotatedRegion<SystemUiOverlayStyle>(
-          // There's no AppBar to do this: keep the system bars transparent so
-          // the gradient runs edge to edge, with icons that contrast with
-          // the gradient corner behind them.
-          value: SystemUiOverlayStyle(
+          // The photo runs edge to edge behind both bars; the scrims keep
+          // the bar icons legible over arbitrary pixels, so the icons are
+          // always light – no per-theme switching.
+          value: const SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: topBrightness == Brightness.light
-                ? Brightness.dark
-                : Brightness.light,
-            statusBarBrightness: topBrightness,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
             systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness:
-                bottomBrightness == Brightness.light
-                ? Brightness.dark
-                : Brightness.light,
+            systemNavigationBarIconBrightness: Brightness.light,
             systemNavigationBarContrastEnforced: false,
           ),
           child: Scaffold(
             backgroundColor: colorScheme.primaryContainer,
-            body: SizedBox.expand(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  // All three stops come from the image-seeded scheme, so
-                  // the wash follows each photo; the theme lerp in main.dart
-                  // animates it between images. Same recipe in both themes –
-                  // the tokens carry the light/dark tone shift.
-                  gradient: LinearGradient(
-                    begin: AlignmentDirectional.topStart,
-                    end: AlignmentDirectional.bottomEnd,
-                    stops: const [0, 0.45, 1],
-                    colors: [
-                      colorScheme.primaryContainer,
-                      colorScheme.secondaryContainer,
-                      colorScheme.tertiaryContainer,
-                    ],
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                // The image-seeded scheme gradient: the backdrop while
+                // loading and on error; the theme lerp in main.dart
+                // animates it between images.
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: AlignmentDirectional.topStart,
+                      end: AlignmentDirectional.bottomEnd,
+                      stops: const [0, 0.45, 1],
+                      colors: [
+                        colorScheme.primaryContainer,
+                        colorScheme.secondaryContainer,
+                        colorScheme.tertiaryContainer,
+                      ],
+                    ),
                   ),
                 ),
-                child: SafeArea(
-                  child: sideBySide
-                      ? Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(child: frame),
-                              const SizedBox(width: 32),
-                              button,
-                            ],
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: frame,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 24),
-                              child: button,
-                            ),
-                          ],
-                        ),
+                _ImageContent(
+                  state: widget.controller.state,
+                  cacheManager: widget.cacheManager,
+                  onRetry: widget.controller.fetch,
+                  onImageFailed: widget.controller.imageFailed,
                 ),
-              ),
+                const _EdgeScrims(),
+                SafeArea(
+                  child: Align(
+                    alignment: AlignmentDirectional.topEnd,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: IconButton(
+                        // Always live: the controller ignores re-entrant
+                        // calls, and disabling would flash the icon grey on
+                        // each tap.
+                        onPressed: widget.controller.fetch,
+                        icon: const Icon(Icons.refresh),
+                        color: Colors.white,
+                        iconSize: 28,
+                        tooltip: 'Load another random image',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -222,131 +190,43 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// The image's frame: fills whatever space the layout hands it – the photo
-/// should be as large as possible, so no aspect clamp and no size cap;
-/// BoxFit.cover absorbs the difference between the frame's aspect and the
-/// photo's own.
-class _ImageFrame extends StatelessWidget {
-  const _ImageFrame({required this.child, required this.glow});
-
-  final Widget child;
-
-  /// Painted behind [child] at the frame's own size; its blur bleeds past
-  /// the frame, so the Stack below must not clip.
-  final Widget glow;
+/// Darkened gradients over the top and bottom edges: the status bar icons
+/// and the refresh action sit on the top one, the gesture handle on the
+/// bottom one, so all stay legible over arbitrary photo pixels. Always
+/// painted – also over the loading and error backdrop – so the bar icons
+/// never have to switch brightness. Purely decorative: ignores pointers.
+class _EdgeScrims extends StatelessWidget {
+  const _EdgeScrims();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final dark = theme.brightness == Brightness.dark;
-    return SizedBox.expand(
-      // The key gives widget tests something to measure.
-      key: const ValueKey('image-frame'),
-      child: Stack(
-        clipBehavior: Clip.none,
-        fit: StackFit.expand,
+    final insets = MediaQuery.paddingOf(context);
+    return IgnorePointer(
+      child: Column(
         children: [
-          glow,
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.35,
+          Container(
+            height: insets.top + 88,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black54, Colors.transparent],
               ),
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: colorScheme.shadow.withValues(
-                    alpha: dark ? 0.45 : 0.25,
-                  ),
-                  blurRadius: 32,
-                  offset: const Offset(0, 12),
-                ),
-              ],
             ),
-            child: child,
+          ),
+          const Spacer(),
+          Container(
+            height: insets.bottom + 12,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.black38, Colors.transparent],
+              ),
+            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// The rendered photo, blurred so it bleeds past the frame – the backdrop
-/// right at the frame\'s edge is the photo\'s own edge colors, so the image
-/// connects seamlessly to its background. TileMode.decal lets the blur fade
-/// to transparent on its own (~2–3 sigma out), keeping the glow local: the
-/// scheme gradient remains the backdrop at the screen edges, where the bar
-/// icons live.
-///
-/// Keyed by the URL that actually rendered – the same signal that drives
-/// the theme – so through loading and error states the glow keeps the
-/// previous photo, exactly like the color scheme does. Purely decorative:
-/// excluded from semantics and pointer events.
-class _AmbientGlow extends StatelessWidget {
-  const _AmbientGlow({required this.url, required this.cacheManager});
-
-  /// Last URL that rendered; null (nothing shown yet) means no glow.
-  final String? url;
-
-  final BaseCacheManager? cacheManager;
-
-  @override
-  Widget build(BuildContext context) {
-    final url = this.url;
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    return IgnorePointer(
-      child: RepaintBoundary(
-        child: AnimatedSwitcher(
-          duration: reduceMotion
-              ? Duration.zero
-              : const Duration(milliseconds: 400),
-          child: url == null
-              ? const SizedBox.expand()
-              : ImageFiltered(
-                  key: ValueKey(url),
-                  imageFilter: ui.ImageFilter.blur(
-                    sigmaX: 40,
-                    sigmaY: 40,
-                    tileMode: ui.TileMode.decal,
-                  ),
-                  child: Image(
-                    image: CachedNetworkImageProvider(
-                      url,
-                      cacheManager: cacheManager,
-                    ),
-                    fit: BoxFit.cover,
-                    excludeFromSemantics: true,
-                  ),
-                ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AnotherButton extends StatelessWidget {
-  const _AnotherButton({required this.onPressed});
-
-  /// Shortest side from which the button grows to match the larger frame.
-  static const double tabletBreakpoint = 600;
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final large = MediaQuery.sizeOf(context).shortestSide >= tabletBreakpoint;
-    final textTheme = Theme.of(context).textTheme;
-    return FilledButton(
-      // Always live: the controller ignores re-entrant calls, and disabling
-      // would flash the button grey on each tap.
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        minimumSize: Size(0, large ? 64 : 52),
-        padding: EdgeInsets.symmetric(horizontal: large ? 48 : 32),
-        textStyle: large ? textTheme.titleLarge : textTheme.titleMedium,
-      ),
-      child: const Text('Another', semanticsLabel: 'Load another random image'),
     );
   }
 }
@@ -363,7 +243,7 @@ class _ImageContent extends StatelessWidget {
   final BaseCacheManager? cacheManager;
   final VoidCallback onRetry;
 
-  /// Reports a failed image load. Returns true when the frame should keep
+  /// Reports a failed image load. Returns true when the screen should keep
   /// showing a loading state because a replacement is on its way.
   final bool Function(String url) onImageFailed;
 
@@ -380,7 +260,7 @@ class _ImageContent extends StatelessWidget {
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       // The default layout builder loosens constraints, letting the image
-      // take its natural aspect ratio; expand children to fill the frame.
+      // take its natural aspect ratio; expand children to fill the screen.
       layoutBuilder: (currentChild, previousChildren) => Stack(
         fit: StackFit.expand,
         children: [...previousChildren, ?currentChild],
@@ -392,38 +272,35 @@ class _ImageContent extends StatelessWidget {
           actionLabel: 'Try again',
           onAction: onRetry,
         ),
-        RandomImageLoaded(:final url) => ClipRRect(
+        RandomImageLoaded(:final url) => CachedNetworkImage(
           // The key drives the AnimatedSwitcher transition between URLs.
           key: ValueKey(url),
-          borderRadius: BorderRadius.circular(28),
-          child: CachedNetworkImage(
-            imageUrl: url,
-            cacheManager: cacheManager,
+          imageUrl: url,
+          cacheManager: cacheManager,
+          fit: BoxFit.cover,
+          fadeInDuration: fadeDuration,
+          fadeOutDuration: fadeDuration,
+          // Only the loaded picture is an image to assistive tech; the
+          // progress and failure states describe themselves.
+          imageBuilder: (context, imageProvider) => Image(
+            image: imageProvider,
             fit: BoxFit.cover,
-            fadeInDuration: fadeDuration,
-            fadeOutDuration: fadeDuration,
-            // Only the loaded picture is an image to assistive tech; the
-            // progress and failure states describe themselves.
-            imageBuilder: (context, imageProvider) => Image(
-              image: imageProvider,
-              fit: BoxFit.cover,
-              semanticLabel: 'Random photo from Unsplash',
-            ),
-            progressIndicatorBuilder: (context, _, progress) => Center(
-              child: CircularProgressIndicator(
-                value: progress.progress,
-                semanticsLabel: 'Downloading image',
-              ),
-            ),
-            errorWidget: (context, _, _) => onImageFailed(url)
-                ? const _Spinner()
-                : _ErrorPanel(
-                    message: "This image couldn't be loaded",
-                    // Retrying a dead URL is pointless; offer a fresh one.
-                    actionLabel: 'Try another',
-                    onAction: onRetry,
-                  ),
+            semanticLabel: 'Random photo from Unsplash',
           ),
+          progressIndicatorBuilder: (context, _, progress) => Center(
+            child: CircularProgressIndicator(
+              value: progress.progress,
+              semanticsLabel: 'Downloading image',
+            ),
+          ),
+          errorWidget: (context, _, _) => onImageFailed(url)
+              ? const _Spinner()
+              : _ErrorPanel(
+                  message: "This image couldn't be loaded",
+                  // Retrying a dead URL is pointless; offer a fresh one.
+                  actionLabel: 'Try another',
+                  onAction: onRetry,
+                ),
         ),
       },
     );
@@ -472,9 +349,9 @@ class _ErrorPanel extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Scrolls rather than overflows the fixed frame when space is
-        // tight (landscape, large font scales); the action button stays
-        // outside the scroll area so it's always visible.
+        // Scrolls rather than overflows when space is tight (landscape,
+        // large font scales); the action button stays outside the scroll
+        // area so it's always visible.
         Flexible(
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),

@@ -14,7 +14,7 @@ Future<Color> stubSeedExtractor(ui.Image _) async => Colors.teal;
 const imageFailedCopy = "This image couldn't be loaded";
 
 void main() {
-  testWidgets('fetches on startup and again when Another is tapped', (
+  testWidgets('fetches on startup and again when refresh is tapped', (
     tester,
   ) async {
     final api = FakeImageApi([
@@ -33,7 +33,7 @@ void main() {
     expect(api.calls, 1);
     expect(find.byType(CachedNetworkImage), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Another'));
+    await tester.tap(find.byIcon(Icons.refresh));
     await tester.pump();
     await tester.pump();
 
@@ -134,7 +134,7 @@ void main() {
       expect(api.calls, 2);
       expect(find.text(imageFailedCopy), findsNothing);
 
-      await tester.tap(find.widgetWithText(FilledButton, 'Another'));
+      await tester.tap(find.byIcon(Icons.refresh));
       await settle(
         tester,
         () => find.text(imageFailedCopy).evaluate().isNotEmpty,
@@ -147,7 +147,7 @@ void main() {
     });
   });
 
-  testWidgets('stacks the button below the frame in portrait', (tester) async {
+  testWidgets('fills the screen with the image in portrait', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -161,21 +161,15 @@ void main() {
     );
     await tester.pump();
 
-    final frameFinder = find.byKey(const ValueKey('image-frame'));
-    expect(frameFinder, findsOneWidget);
-    final frame = tester.getRect(frameFinder);
-    final button = tester.getRect(find.byType(FilledButton));
+    final image = tester.getRect(find.byType(CachedNetworkImage));
+    expect(image, const Rect.fromLTWH(0, 0, 800, 1600));
 
-    expect(frame.width, 800 - 48); // Fills the width inside the padding.
-    // Everything above the button: 1600 minus button, its bottom padding,
-    // and the frame's own padding.
-    expect(frame.height, 1600 - 64 - 24 - 48);
-    expect(button.height, 64); // Tablet-sized to match.
-    expect(button.top, greaterThan(frame.bottom));
-    expect(button.center.dx, closeTo(frame.center.dx, 1));
+    final refresh = tester.getRect(find.byIcon(Icons.refresh));
+    expect(refresh.center.dx, greaterThan(800 * 0.8)); // Top-right corner.
+    expect(refresh.center.dy, lessThan(100));
   });
 
-  testWidgets('fills the width on a phone with a regular-size button', (
+  testWidgets('fills a phone screen edge to edge', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -191,15 +185,12 @@ void main() {
     );
     await tester.pump();
 
-    final frame = tester.getRect(find.byKey(const ValueKey('image-frame')));
-    final button = tester.getRect(find.byType(FilledButton));
-
-    expect(frame.width, 390 - 48);
-    expect(frame.height, 844 - 52 - 24 - 48); // All the height above the button.
-    expect(button.height, 52);
+    final image = tester.getRect(find.byType(CachedNetworkImage));
+    expect(image, const Rect.fromLTWH(0, 0, 390, 844));
+    expect(find.byIcon(Icons.refresh), findsOneWidget);
   });
 
-  testWidgets('places the button beside the frame in landscape', (
+  testWidgets('fills the screen with the image in landscape', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1600, 800);
@@ -215,14 +206,11 @@ void main() {
     );
     await tester.pump();
 
-    final frame = tester.getRect(find.byKey(const ValueKey('image-frame')));
-    final button = tester.getRect(find.byType(FilledButton));
+    final image = tester.getRect(find.byType(CachedNetworkImage));
+    expect(image, const Rect.fromLTWH(0, 0, 1600, 800));
 
-    expect(frame.height, 800 - 32); // Fills the height inside the padding.
-    // The row's width minus the gap and whatever the button needs.
-    expect(frame.width, 1600 - 32 - 32 - button.width);
-    expect(button.height, 64);
-    expect(button.left, greaterThan(frame.right));
-    expect(button.center.dy, closeTo(frame.center.dy, 1));
+    final refresh = tester.getRect(find.byIcon(Icons.refresh));
+    expect(refresh.center.dx, greaterThan(1600 * 0.8)); // Top-right corner.
+    expect(refresh.center.dy, lessThan(100));
   });
 }
