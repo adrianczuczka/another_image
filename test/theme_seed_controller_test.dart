@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:another_image/src/state/random_image_controller.dart';
 import 'package:another_image/src/state/theme_seed_controller.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'fake_image_api.dart';
@@ -57,7 +58,7 @@ void main() {
     final images = RandomImageController(FakeImageApi(['url-a', 'url-b']));
     final seeds = ThemeSeedController(
       images,
-      (url) async => url == 'url-a' ? green : throw StateError('undecodable'),
+      (url) async => url == 'url-a' ? green : throw Exception('undecodable'),
     );
     var notified = 0;
     seeds.addListener(() => notified++);
@@ -84,5 +85,33 @@ void main() {
     await pumpEventQueue();
 
     expect(extractions, 0);
+  });
+
+  test('picks up an image that loaded before construction', () async {
+    final images = RandomImageController(FakeImageApi(['url-a']));
+    await images.fetch();
+
+    final seeds = ThemeSeedController(images, (_) async => red);
+    await pumpEventQueue();
+
+    expect(seeds.seed, red);
+  });
+
+  test('reports a programming error from extraction, keeps the seed', () async {
+    final reported = <FlutterErrorDetails>[];
+    final previousHandler = FlutterError.onError;
+    FlutterError.onError = reported.add;
+    addTearDown(() => FlutterError.onError = previousHandler);
+    final images = RandomImageController(FakeImageApi(['url-a']));
+    final seeds = ThemeSeedController(
+      images,
+      (_) async => throw StateError('bug'),
+    );
+
+    await images.fetch();
+    await pumpEventQueue();
+
+    expect(seeds.seed, ThemeSeedController.defaultFallback);
+    expect(reported, hasLength(1));
   });
 }

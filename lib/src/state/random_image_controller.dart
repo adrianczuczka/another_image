@@ -70,7 +70,12 @@ class RandomImageController extends ChangeNotifier {
   /// Idempotent and safe to call during build: the replacement fetch is
   /// scheduled, not started synchronously.
   bool imageFailed(String url) {
-    if (url != _currentUrl || url == _replacingUrl || _fetching) return true;
+    final state = _state;
+    // Only the image currently on screen may react. A late failure from a
+    // widget on its way out – the state has already moved to an error or a
+    // new image – must neither consume the grant nor touch the state.
+    if (state is! RandomImageLoaded || state.url != url) return true;
+    if (url == _replacingUrl || _fetching) return true;
     if (!_replacementAvailable) return false;
     _replacementAvailable = false;
     _replacingUrl = url;
@@ -101,8 +106,10 @@ class RandomImageController extends ChangeNotifier {
     } on ImageApiException catch (e) {
       _state = RandomImageError(e.failure, statusCode: e.statusCode);
     } catch (error, stack) {
-      // Not an API problem but a bug: report it where developers and crash
-      // reporters see it, and keep the screen usable.
+      // Not an API problem but a bug: set the state first (a throwing
+      // FlutterError.onError must not leave stale UI), then report it where
+      // developers and crash reporters see it.
+      _state = const RandomImageError(null);
       FlutterError.reportError(
         FlutterErrorDetails(
           exception: error,
@@ -111,11 +118,13 @@ class RandomImageController extends ChangeNotifier {
           context: ErrorDescription('while fetching a random image'),
         ),
       );
-      _state = const RandomImageError(null);
+    } finally {
+      // Runs even if error reporting itself throws: a wedged _fetching flag
+      // would disable the app for good.
+      _replacingUrl = null;
+      _fetching = false;
+      _notify();
     }
-    _replacingUrl = null;
-    _fetching = false;
-    _notify();
   }
 
   void _notify() {

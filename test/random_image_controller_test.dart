@@ -213,5 +213,22 @@ void main() {
         expect(api.calls, 1);
       },
     );
+
+    test('ignores a late failure once the state has moved on', () async {
+      final api = FakeImageApi([
+        'url-a',
+        ImageApiException(ImageApiFailure.unreachable),
+      ]);
+      final controller = RandomImageController(api);
+      await controller.fetch(); // Loaded(url-a).
+      await controller.fetch(); // The next tap failed: RandomImageError.
+
+      // url-a's download fails while its widget is fading out.
+      expect(controller.imageFailed('url-a'), isTrue);
+      await pumpEventQueue();
+
+      expect(api.calls, 2); // No unrequested refetch.
+      expect(controller.state, isA<RandomImageError>()); // The panel stays.
+    });
   });
 }

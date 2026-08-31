@@ -1,7 +1,9 @@
-import 'dart:typed_data';
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:another_image/src/theme/seed_color.dart';
+import 'package:fake_async/fake_async.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -75,4 +77,29 @@ void main() {
 
     await expectLater(seedColorFromImageProvider(provider), throwsA(anything));
   });
+
+  test('gives up on a provider that never delivers', () {
+    fakeAsync((fake) {
+      Object? caught;
+      seedColorFromImageProvider(
+        _NeverLoadsImage(),
+      ).then<void>((_) {}, onError: (Object e) => caught = e);
+
+      fake.elapse(const Duration(seconds: 11));
+
+      expect(caught, isA<TimeoutException>());
+    });
+  });
+}
+
+class _NeverLoadsImage extends ImageProvider<_NeverLoadsImage> {
+  @override
+  Future<_NeverLoadsImage> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    _NeverLoadsImage key,
+    ImageDecoderCallback decode,
+  ) => OneFrameImageStreamCompleter(Completer<ImageInfo>().future);
 }

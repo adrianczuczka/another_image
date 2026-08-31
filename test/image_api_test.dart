@@ -143,5 +143,30 @@ void main() {
         throwsFailure(ImageApiFailure.unreachable),
       );
     });
+
+    test('reports an empty or relative url as malformed', () async {
+      for (final body in ['{"url": ""}', '{"url": "not a url"}']) {
+        final api = ImageApi(
+          client: MockClient((_) async => http.Response(body, 200)),
+        );
+        await expectLater(
+          api.fetchRandomImageUrl,
+          throwsFailure(ImageApiFailure.malformed),
+        );
+      }
+    });
+
+    test('dispose leaves an injected client usable by other owners', () async {
+      final client = MockClient(
+        (_) async =>
+            http.Response('{"url": "https://images.unsplash.com/p"}', 200),
+      );
+      final first = ImageApi(client: client);
+      final second = ImageApi(client: client);
+
+      first.dispose();
+
+      await expectLater(second.fetchRandomImageUrl(), completes);
+    });
   });
 }

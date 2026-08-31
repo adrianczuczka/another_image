@@ -17,6 +17,8 @@ class ThemeSeedController extends ChangeNotifier {
     Color fallback = defaultFallback,
   }) : _seed = fallback {
     _images.addListener(_onImageChanged);
+    // An image may already be on screen when this controller is created.
+    _onImageChanged();
   }
 
   /// Indigo, shown before the first image and if none ever decodes.
@@ -42,10 +44,22 @@ class ThemeSeedController extends ChangeNotifier {
     final Color seed;
     try {
       seed = await _extract(url);
-    } catch (_) {
-      // Decoding failures surface as Exceptions and Errors alike (a dead URL
-      // in the API's pool is the common case). The image widget shows its
-      // own error; keep the previous seed rather than adding a second one.
+    } on Exception {
+      // Expected: dead URLs and undecodable data surface as Exceptions. The
+      // image widget shows its own error; keep the previous seed rather
+      // than adding a second one.
+      return;
+    } catch (error, stack) {
+      // Anything else is a bug, not a load failure: report it and keep the
+      // current theme.
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'another_image',
+          context: ErrorDescription('while extracting a theme seed'),
+        ),
+      );
       return;
     }
     if (_disposed || seq != _extractionSeq) return;

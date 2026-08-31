@@ -33,6 +33,7 @@ class ImageApiException implements Exception {
 class ImageApi {
   ImageApi({http.Client? client, Uri? endpoint})
     : _client = client ?? http.Client(),
+      _ownsClient = client == null,
       _endpoint = endpoint ?? defaultEndpoint;
 
   /// `/image/` with the trailing slash: the bare `/image` path answers with a
@@ -60,6 +61,10 @@ class ImageApi {
   };
 
   final http.Client _client;
+
+  /// Whether [dispose] may close [_client]: only when this instance created
+  /// it – injected clients belong to their creators.
+  final bool _ownsClient;
   final Uri _endpoint;
 
   /// Fetches a random image URL, sized for on-device display.
@@ -87,6 +92,10 @@ class ImageApi {
     if (url is! String) throw ImageApiException(ImageApiFailure.malformed);
     try {
       final uri = Uri.parse(url);
+      // An empty or relative string parses fine but can never load.
+      if (!uri.isScheme('http') && !uri.isScheme('https') || uri.host.isEmpty) {
+        throw ImageApiException(ImageApiFailure.malformed);
+      }
       if (uri.host != unsplashHost) return uri.toString();
       return uri
           .replace(queryParameters: {...uri.queryParameters, ...imageParams})
@@ -99,5 +108,7 @@ class ImageApi {
     }
   }
 
-  void dispose() => _client.close();
+  void dispose() {
+    if (_ownsClient) _client.close();
+  }
 }

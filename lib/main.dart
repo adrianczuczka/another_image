@@ -17,11 +17,20 @@ void main() {
   runApp(const AnotherImageApp());
 }
 
-Future<Color> _seedFromNetworkImage(String url) {
-  // Shares the disk cache with the CachedNetworkImage widget showing the
-  // same URL, so this costs one thumbnail decode, not a second download.
-  return seedColorFromImageProvider(
-    CachedNetworkImageProvider(url, maxWidth: 112, maxHeight: 112),
+/// Builds the production seed extractor: a thumbnail decode through the same
+/// cache the image widget uses, so each image costs one download. The cache
+/// package can only resize through an [ImageCacheManager]; for any other
+/// injected manager the extractor decodes at full size, and the extraction
+/// pipeline's pixel sampling keeps the cost bounded.
+SeedExtractor _seedFromNetworkImage(BaseCacheManager? cacheManager) {
+  final canResize = cacheManager == null || cacheManager is ImageCacheManager;
+  return (url) => seedColorFromImageProvider(
+    CachedNetworkImageProvider(
+      url,
+      cacheManager: cacheManager,
+      maxWidth: canResize ? 112 : null,
+      maxHeight: canResize ? 112 : null,
+    ),
   );
 }
 
@@ -52,7 +61,7 @@ class _AnotherImageAppState extends State<AnotherImageApp>
   late final RandomImageController _images = RandomImageController(_api);
   late final ThemeSeedController _themeSeed = ThemeSeedController(
     _images,
-    widget.seedExtractor ?? _seedFromNetworkImage,
+    widget.seedExtractor ?? _seedFromNetworkImage(widget.cacheManager),
   );
 
   @override

@@ -23,11 +23,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   ImageStream? _pendingImage;
   ImageStreamListener? _pendingImageListener;
+  String? _lastShownUrl;
 
   @override
   void initState() {
     super.initState();
     widget.controller.addListener(_onStateChanged);
+  }
+
+  @override
+  void didUpdateWidget(HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onStateChanged);
+      widget.controller.addListener(_onStateChanged);
+      _onStateChanged();
+    }
   }
 
   @override
@@ -61,9 +72,11 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       SemanticsService.sendAnnouncement(
         View.of(context),
-        'New image loaded',
+        // The duplicate re-roll can keep the same URL; don't claim novelty.
+        url == _lastShownUrl ? 'Same image shown again' : 'New image loaded',
         Directionality.of(context),
       );
+      _lastShownUrl = url;
     }, onError: (_, _) => _stopWaitingForImage());
     _pendingImage = stream;
     _pendingImageListener = listener;
@@ -243,33 +256,37 @@ class _ImageSquare extends StatelessWidget {
           actionLabel: 'Try again',
           onAction: onRetry,
         ),
-        RandomImageLoaded(:final url) => Semantics(
+        RandomImageLoaded(:final url) => ClipRRect(
+          // The key drives the AnimatedSwitcher transition between URLs.
           key: ValueKey(url),
-          image: true,
-          label: 'Random photo from Unsplash',
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: CachedNetworkImage(
-              imageUrl: url,
-              cacheManager: cacheManager,
-              fit: BoxFit.cover,
-              fadeInDuration: fadeDuration,
-              fadeOutDuration: fadeDuration,
-              progressIndicatorBuilder: (context, _, progress) => Center(
-                child: CircularProgressIndicator(
-                  value: progress.progress,
-                  semanticsLabel: 'Downloading image',
-                ),
-              ),
-              errorWidget: (context, _, _) => onImageFailed(url)
-                  ? const _Spinner()
-                  : _ErrorPanel(
-                      message: "This image couldn't be loaded",
-                      // Retrying a dead URL is pointless; offer a fresh one.
-                      actionLabel: 'Try another',
-                      onAction: onRetry,
-                    ),
+          borderRadius: BorderRadius.circular(24),
+          child: CachedNetworkImage(
+            imageUrl: url,
+            cacheManager: cacheManager,
+            fit: BoxFit.cover,
+            fadeInDuration: fadeDuration,
+            fadeOutDuration: fadeDuration,
+            // Only the loaded picture is an image to assistive tech; the
+            // progress and failure states describe themselves.
+            imageBuilder: (context, imageProvider) => Semantics(
+              image: true,
+              label: 'Random photo',
+              child: Image(image: imageProvider, fit: BoxFit.cover),
             ),
+            progressIndicatorBuilder: (context, _, progress) => Center(
+              child: CircularProgressIndicator(
+                value: progress.progress,
+                semanticsLabel: 'Downloading image',
+              ),
+            ),
+            errorWidget: (context, _, _) => onImageFailed(url)
+                ? const _Spinner()
+                : _ErrorPanel(
+                    message: "This image couldn't be loaded",
+                    // Retrying a dead URL is pointless; offer a fresh one.
+                    actionLabel: 'Try another',
+                    onAction: onRetry,
+                  ),
           ),
         ),
       },
@@ -316,41 +333,44 @@ class _ErrorPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Semantics(
-      liveRegion: true,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Scrolls rather than overflows the fixed square when space is
-          // tight (landscape, large font scales); the action button stays
-          // outside the scroll area so it's always visible.
-          Flexible(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.broken_image_outlined,
-                    size: 48,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Scrolls rather than overflows the fixed square when space is
+        // tight (landscape, large font scales); the action button stays
+        // outside the scroll area so it's always visible.
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.broken_image_outlined,
+                  size: 48,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(height: 16),
+                // The live region sits on the text that owns the label, so
+                // assistive tech announces the message when the panel
+                // appears or its copy changes.
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
                     message,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodyLarge,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4, bottom: 12),
-            child: TextButton(onPressed: onAction, child: Text(actionLabel)),
-          ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 12),
+          child: TextButton(onPressed: onAction, child: Text(actionLabel)),
+        ),
+      ],
     );
   }
 }
