@@ -166,8 +166,10 @@ void main() {
     final frame = tester.getRect(frameFinder);
     final button = tester.getRect(find.byType(FilledButton));
 
-    expect(frame.width, 560); // Capped, not the full 800 - 48.
-    expect(frame.height, 700); // Stretched to the 4:5 cap.
+    expect(frame.width, 800 - 48); // Fills the width inside the padding.
+    // Everything above the button: 1600 minus button, its bottom padding,
+    // and the frame's own padding.
+    expect(frame.height, 1600 - 64 - 24 - 48);
     expect(button.height, 64); // Tablet-sized to match.
     expect(button.top, greaterThan(frame.bottom));
     expect(button.center.dx, closeTo(frame.center.dx, 1));
@@ -193,7 +195,7 @@ void main() {
     final button = tester.getRect(find.byType(FilledButton));
 
     expect(frame.width, 390 - 48);
-    expect(frame.height, (390 - 48) * 5 / 4); // 4:5 fits the tall screen.
+    expect(frame.height, 844 - 52 - 24 - 48); // All the height above the button.
     expect(button.height, 52);
   });
 
@@ -216,8 +218,9 @@ void main() {
     final frame = tester.getRect(find.byKey(const ValueKey('image-frame')));
     final button = tester.getRect(find.byType(FilledButton));
 
-    expect(frame.height, 540); // Capped; would be 800 - 32 uncapped.
-    expect(frame.width, 720); // 4:3 from the capped height.
+    expect(frame.height, 800 - 32); // Fills the height inside the padding.
+    // The row's width minus the gap and whatever the button needs.
+    expect(frame.width, 1600 - 32 - 32 - button.width);
     expect(button.height, 64);
     expect(button.left, greaterThan(frame.right));
     expect(button.center.dy, closeTo(frame.center.dy, 1));

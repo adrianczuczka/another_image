@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -37,7 +36,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   ImageStream? _pendingImage;
   ImageStreamListener? _pendingImageListener;
-  String? _lastShownUrl;
+  /// Last URL whose first frame actually rendered – keys the ambient glow
+  /// and de-dups screen-reader announcements.
+  String? _shownUrl;
 
   @override
   void initState() {
@@ -93,13 +94,14 @@ class _HomeScreenState extends State<HomeScreen> {
       info.dispose();
       _stopWaitingForImage();
       if (!mounted) return;
+      // The duplicate re-roll can keep the same URL; don't claim novelty.
+      final isRepeat = url == _shownUrl;
+      setState(() => _shownUrl = url); // Re-aims the ambient glow.
       SemanticsService.sendAnnouncement(
         View.of(context),
-        // The duplicate re-roll can keep the same URL; don't claim novelty.
-        url == _lastShownUrl ? 'Same image shown again' : 'New image loaded',
+        isRepeat ? 'Same image shown again' : 'New image loaded',
         Directionality.of(context),
       );
-      _lastShownUrl = url;
     }, onError: (_, _) => _stopWaitingForImage());
     _pendingImage = stream;
     _pendingImageListener = listener;
@@ -119,6 +121,10 @@ class _HomeScreenState extends State<HomeScreen> {
       listenable: widget.controller,
       builder: (context, _) {
         final frame = _ImageFrame(
+          glow: _AmbientGlow(
+            url: _shownUrl,
+            cacheManager: widget.cacheManager,
+          ),
           child: _ImageContent(
             state: widget.controller.state,
             cacheManager: widget.cacheManager,
@@ -186,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Flexible(child: frame),
+                              Expanded(child: frame),
                               const SizedBox(width: 32),
                               button,
                             ],
@@ -195,11 +201,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       : Column(
                           children: [
                             Expanded(
-                              child: Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(24),
-                                  child: frame,
-                                ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: frame,
                               ),
                             ),
                             Padding(
@@ -218,39 +222,33 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// The image's frame: fills as much of the available space as its aspect
-/// bounds allow. Portrait stretches from square up to 4:5 (w:h); landscape
-/// is a fixed 4:3. The caps – 560×700 and 720×540 – are those aspects at
-/// tablet size. The aspect is fixed per orientation, never per photo, so
-/// the frame can't jump between images and the loading and error states
-/// keep the same geometry.
+/// The image's frame: fills whatever space the layout hands it – the photo
+/// should be as large as possible, so no aspect clamp and no size cap;
+/// BoxFit.cover absorbs the difference between the frame's aspect and the
+/// photo's own.
 class _ImageFrame extends StatelessWidget {
-  const _ImageFrame({required this.child});
-
-  static const double maxPortraitWidth = 560;
-  static const double maxPortraitHeight = 700;
-  static const double maxLandscapeHeight = 540;
+  const _ImageFrame({required this.child, required this.glow});
 
   final Widget child;
 
+  /// Painted behind [child] at the frame's own size; its blur bleeds past
+  /// the frame, so the Stack below must not clip.
+  final Widget glow;
+
   @override
   Widget build(BuildContext context) {
-    final landscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = landscape
-            ? _landscapeSize(constraints)
-            : _portraitSize(constraints);
-        return SizedBox.fromSize(
-          // The frame's size is computed rather than declared through a
-          // layout widget; the key gives widget tests something to measure.
-          key: const ValueKey('image-frame'),
-          size: size,
-          child: DecoratedBox(
+    return SizedBox.expand(
+      // The key gives widget tests something to measure.
+      key: const ValueKey('image-frame'),
+      child: Stack(
+        clipBehavior: Clip.none,
+        fit: StackFit.expand,
+        children: [
+          glow,
+          DecoratedBox(
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withValues(
                 alpha: 0.35,
@@ -268,33 +266,62 @@ class _ImageFrame extends StatelessWidget {
             ),
             child: child,
           ),
-        );
-      },
+        ],
+      ),
     );
   }
+}
 
-  /// As wide as fits, then as tall as the space allows between square and
-  /// 4:5 – tight heights (split screen, landscape-ish windows) trade height
-  /// away before width.
-  static Size _portraitSize(BoxConstraints constraints) {
-    var width = math.min(constraints.maxWidth, maxPortraitWidth);
-    final height = math.min(
-      math.min(constraints.maxHeight, maxPortraitHeight),
-      width * 5 / 4,
+/// The rendered photo, blurred so it bleeds past the frame – the backdrop
+/// right at the frame\'s edge is the photo\'s own edge colors, so the image
+/// connects seamlessly to its background. TileMode.decal lets the blur fade
+/// to transparent on its own (~2–3 sigma out), keeping the glow local: the
+/// scheme gradient remains the backdrop at the screen edges, where the bar
+/// icons live.
+///
+/// Keyed by the URL that actually rendered – the same signal that drives
+/// the theme – so through loading and error states the glow keeps the
+/// previous photo, exactly like the color scheme does. Purely decorative:
+/// excluded from semantics and pointer events.
+class _AmbientGlow extends StatelessWidget {
+  const _AmbientGlow({required this.url, required this.cacheManager});
+
+  /// Last URL that rendered; null (nothing shown yet) means no glow.
+  final String? url;
+
+  final BaseCacheManager? cacheManager;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = this.url;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return IgnorePointer(
+      child: RepaintBoundary(
+        child: AnimatedSwitcher(
+          duration: reduceMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 400),
+          child: url == null
+              ? const SizedBox.expand()
+              : ImageFiltered(
+                  key: ValueKey(url),
+                  imageFilter: ui.ImageFilter.blur(
+                    sigmaX: 40,
+                    sigmaY: 40,
+                    tileMode: ui.TileMode.decal,
+                  ),
+                  child: Image(
+                    image: CachedNetworkImageProvider(
+                      url,
+                      cacheManager: cacheManager,
+                    ),
+                    fit: BoxFit.cover,
+                    excludeFromSemantics: true,
+                  ),
+                ),
+        ),
+      ),
     );
-    if (height < width) width = height; // Never wider than square.
-    return Size(width, height);
-  }
-
-  /// Fixed 4:3, sized from the height and shrunk when the row is narrow.
-  static Size _landscapeSize(BoxConstraints constraints) {
-    var height = math.min(constraints.maxHeight, maxLandscapeHeight);
-    var width = height * 4 / 3;
-    if (width > constraints.maxWidth) {
-      width = constraints.maxWidth;
-      height = width * 3 / 4;
-    }
-    return Size(width, height);
   }
 }
 
