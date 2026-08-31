@@ -147,7 +147,7 @@ void main() {
     });
   });
 
-  testWidgets('stacks the button below the square in portrait', (tester) async {
+  testWidgets('stacks the button below the frame in portrait', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -161,14 +161,16 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(AspectRatio), findsOneWidget);
-    final square = tester.getRect(find.byType(AspectRatio));
+    final frameFinder = find.byKey(const ValueKey('image-frame'));
+    expect(frameFinder, findsOneWidget);
+    final frame = tester.getRect(frameFinder);
     final button = tester.getRect(find.byType(FilledButton));
 
-    expect(square.width, 560); // Capped, not the full 800 - 64.
+    expect(frame.width, 560); // Capped, not the full 800 - 48.
+    expect(frame.height, 700); // Stretched to the 4:5 cap.
     expect(button.height, 64); // Tablet-sized to match.
-    expect(button.top, greaterThan(square.bottom));
-    expect(button.center.dx, closeTo(square.center.dx, 1));
+    expect(button.top, greaterThan(frame.bottom));
+    expect(button.center.dx, closeTo(frame.center.dx, 1));
   });
 
   testWidgets('fills the width on a phone with a regular-size button', (
@@ -187,14 +189,15 @@ void main() {
     );
     await tester.pump();
 
-    final square = tester.getRect(find.byType(AspectRatio));
+    final frame = tester.getRect(find.byKey(const ValueKey('image-frame')));
     final button = tester.getRect(find.byType(FilledButton));
 
-    expect(square.width, 390 - 64);
+    expect(frame.width, 390 - 48);
+    expect(frame.height, (390 - 48) * 5 / 4); // 4:5 fits the tall screen.
     expect(button.height, 52);
   });
 
-  testWidgets('places the button beside the square in landscape', (
+  testWidgets('places the button beside the frame in landscape', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1600, 800);
@@ -210,12 +213,13 @@ void main() {
     );
     await tester.pump();
 
-    final square = tester.getRect(find.byType(AspectRatio));
+    final frame = tester.getRect(find.byKey(const ValueKey('image-frame')));
     final button = tester.getRect(find.byType(FilledButton));
 
-    expect(square.height, 560); // Capped; would be 800 - 32 uncapped.
+    expect(frame.height, 540); // Capped; would be 800 - 32 uncapped.
+    expect(frame.width, 720); // 4:3 from the capped height.
     expect(button.height, 64);
-    expect(button.left, greaterThan(square.right));
-    expect(button.center.dy, closeTo(square.center.dy, 1));
+    expect(button.left, greaterThan(frame.right));
+    expect(button.center.dy, closeTo(frame.center.dy, 1));
   });
 }

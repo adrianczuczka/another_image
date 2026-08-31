@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -117,8 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
-        final square = _Square(
-          child: _ImageSquare(
+        final frame = _ImageFrame(
+          child: _ImageContent(
             state: widget.controller.state,
             cacheManager: widget.cacheManager,
             onRetry: widget.controller.fetch,
@@ -126,57 +127,89 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
         final button = _AnotherButton(onPressed: widget.controller.fetch);
-        // Stacking the button under the square in landscape leaves the
-        // square only what's left of the height, so put them side by side.
+        // Stacking the button under the frame in landscape leaves the
+        // frame only what's left of the height, so put them side by side.
         final sideBySide =
             MediaQuery.orientationOf(context) == Orientation.landscape;
-        final theme = Theme.of(context);
-        final dark = theme.brightness == Brightness.dark;
+        final colorScheme = Theme.of(context).colorScheme;
+        // The bar icons sit over the gradient's corners, so contrast against
+        // those corner colors – which the seeded scheme picks, not the
+        // theme's overall brightness (the high-contrast variants shift the
+        // container tones).
+        final topBrightness = ThemeData.estimateBrightnessForColor(
+          colorScheme.primaryContainer,
+        );
+        final bottomBrightness = ThemeData.estimateBrightnessForColor(
+          colorScheme.tertiaryContainer,
+        );
         return AnnotatedRegion<SystemUiOverlayStyle>(
           // There's no AppBar to do this: keep the system bars transparent so
-          // the background runs edge to edge, with icons that contrast with
-          // the current scheme.
+          // the gradient runs edge to edge, with icons that contrast with
+          // the gradient corner behind them.
           value: SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
-            statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
-            statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+            statusBarIconBrightness: topBrightness == Brightness.light
+                ? Brightness.dark
+                : Brightness.light,
+            statusBarBrightness: topBrightness,
             systemNavigationBarColor: Colors.transparent,
-            systemNavigationBarIconBrightness: dark
-                ? Brightness.light
-                : Brightness.dark,
+            systemNavigationBarIconBrightness:
+                bottomBrightness == Brightness.light
+                ? Brightness.dark
+                : Brightness.light,
             systemNavigationBarContrastEnforced: false,
           ),
           child: Scaffold(
-            backgroundColor: theme.colorScheme.primaryContainer,
-            body: SafeArea(
-              child: sideBySide
-                  ? Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Flexible(child: square),
-                          const SizedBox(width: 32),
-                          button,
-                        ],
-                      ),
-                    )
-                  : Column(
-                      children: [
-                        Expanded(
-                          child: Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: square,
-                            ),
+            backgroundColor: colorScheme.primaryContainer,
+            body: SizedBox.expand(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  // All three stops come from the image-seeded scheme, so
+                  // the wash follows each photo; the theme lerp in main.dart
+                  // animates it between images. Same recipe in both themes –
+                  // the tokens carry the light/dark tone shift.
+                  gradient: LinearGradient(
+                    begin: AlignmentDirectional.topStart,
+                    end: AlignmentDirectional.bottomEnd,
+                    stops: const [0, 0.45, 1],
+                    colors: [
+                      colorScheme.primaryContainer,
+                      colorScheme.secondaryContainer,
+                      colorScheme.tertiaryContainer,
+                    ],
+                  ),
+                ),
+                child: SafeArea(
+                  child: sideBySide
+                      ? Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Flexible(child: frame),
+                              const SizedBox(width: 32),
+                              button,
+                            ],
                           ),
+                        )
+                      : Column(
+                          children: [
+                            Expanded(
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: frame,
+                                ),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: button,
+                            ),
+                          ],
                         ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 32),
-                          child: button,
-                        ),
-                      ],
-                    ),
+                ),
+              ),
             ),
           ),
         );
@@ -185,36 +218,90 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _Square extends StatelessWidget {
-  const _Square({required this.child});
+/// The image's frame: fills as much of the available space as its aspect
+/// bounds allow. Portrait stretches from square up to 4:5 (w:h); landscape
+/// is a fixed 4:3. The caps – 560×700 and 720×540 – are those aspects at
+/// tablet size. The aspect is fixed per orientation, never per photo, so
+/// the frame can't jump between images and the loading and error states
+/// keep the same geometry.
+class _ImageFrame extends StatelessWidget {
+  const _ImageFrame({required this.child});
 
-  static const double maxSize = 560;
+  static const double maxPortraitWidth = 560;
+  static const double maxPortraitHeight = 700;
+  static const double maxLandscapeHeight = 540;
 
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: maxSize, maxHeight: maxSize),
-      child: AspectRatio(
-        aspectRatio: 1,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(24),
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = landscape
+            ? _landscapeSize(constraints)
+            : _portraitSize(constraints);
+        return SizedBox.fromSize(
+          // The frame's size is computed rather than declared through a
+          // layout widget; the key gives widget tests something to measure.
+          key: const ValueKey('image-frame'),
+          size: size,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.35,
+              ),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.shadow.withValues(
+                    alpha: dark ? 0.45 : 0.25,
+                  ),
+                  blurRadius: 32,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: child,
           ),
-          child: child,
-        ),
-      ),
+        );
+      },
     );
+  }
+
+  /// As wide as fits, then as tall as the space allows between square and
+  /// 4:5 – tight heights (split screen, landscape-ish windows) trade height
+  /// away before width.
+  static Size _portraitSize(BoxConstraints constraints) {
+    var width = math.min(constraints.maxWidth, maxPortraitWidth);
+    final height = math.min(
+      math.min(constraints.maxHeight, maxPortraitHeight),
+      width * 5 / 4,
+    );
+    if (height < width) width = height; // Never wider than square.
+    return Size(width, height);
+  }
+
+  /// Fixed 4:3, sized from the height and shrunk when the row is narrow.
+  static Size _landscapeSize(BoxConstraints constraints) {
+    var height = math.min(constraints.maxHeight, maxLandscapeHeight);
+    var width = height * 4 / 3;
+    if (width > constraints.maxWidth) {
+      width = constraints.maxWidth;
+      height = width * 3 / 4;
+    }
+    return Size(width, height);
   }
 }
 
 class _AnotherButton extends StatelessWidget {
   const _AnotherButton({required this.onPressed});
 
-  /// Shortest side from which the button grows to match the larger square.
+  /// Shortest side from which the button grows to match the larger frame.
   static const double tabletBreakpoint = 600;
 
   final VoidCallback onPressed;
@@ -237,8 +324,8 @@ class _AnotherButton extends StatelessWidget {
   }
 }
 
-class _ImageSquare extends StatelessWidget {
-  const _ImageSquare({
+class _ImageContent extends StatelessWidget {
+  const _ImageContent({
     required this.state,
     required this.cacheManager,
     required this.onRetry,
@@ -249,7 +336,7 @@ class _ImageSquare extends StatelessWidget {
   final BaseCacheManager? cacheManager;
   final VoidCallback onRetry;
 
-  /// Reports a failed image load. Returns true when the square should keep
+  /// Reports a failed image load. Returns true when the frame should keep
   /// showing a loading state because a replacement is on its way.
   final bool Function(String url) onImageFailed;
 
@@ -266,7 +353,7 @@ class _ImageSquare extends StatelessWidget {
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
       // The default layout builder loosens constraints, letting the image
-      // take its natural aspect ratio; expand children to keep the square.
+      // take its natural aspect ratio; expand children to fill the frame.
       layoutBuilder: (currentChild, previousChildren) => Stack(
         fit: StackFit.expand,
         children: [...previousChildren, ?currentChild],
@@ -281,7 +368,7 @@ class _ImageSquare extends StatelessWidget {
         RandomImageLoaded(:final url) => ClipRRect(
           // The key drives the AnimatedSwitcher transition between URLs.
           key: ValueKey(url),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(28),
           child: CachedNetworkImage(
             imageUrl: url,
             cacheManager: cacheManager,
@@ -358,7 +445,7 @@ class _ErrorPanel extends StatelessWidget {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // Scrolls rather than overflows the fixed square when space is
+        // Scrolls rather than overflows the fixed frame when space is
         // tight (landscape, large font scales); the action button stays
         // outside the scroll area so it's always visible.
         Flexible(
