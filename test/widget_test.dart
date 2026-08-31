@@ -213,4 +213,42 @@ void main() {
     expect(refresh.center.dx, greaterThan(1600 * 0.8)); // Top-right corner.
     expect(refresh.center.dy, lessThan(100));
   });
+
+  testWidgets('goes back to the previous image without refetching', (
+    tester,
+  ) async {
+    final api = FakeImageApi([
+      'https://example.com/a',
+      'https://example.com/b',
+    ]);
+    await tester.pumpWidget(
+      AnotherImageApp(
+        api: api,
+        seedExtractor: stubSeedExtractor,
+        cacheManager: FakeCacheManager(),
+      ),
+    );
+    await tester.pump();
+    expect(find.byIcon(Icons.undo), findsNothing); // Nothing to go back to.
+
+    await tester.tap(find.byIcon(Icons.shuffle));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byIcon(Icons.undo), findsOneWidget);
+    // Let the back button finish fading in before tapping it.
+    await tester.pump(const Duration(milliseconds: 250));
+
+    await tester.tap(find.byIcon(Icons.undo));
+    await tester.pump(); // Rebuild with the restored image; b starts exiting.
+    // Advance past the 250 ms cross-fade: the outgoing image is dropped in
+    // the same frame its exit animation completes.
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final image = tester.widget<CachedNetworkImage>(
+      find.byType(CachedNetworkImage),
+    );
+    expect(image.imageUrl, 'https://example.com/a');
+    expect(api.calls, 2); // Going back never fetches.
+    expect(find.byIcon(Icons.undo), findsNothing); // History exhausted.
+  });
 }

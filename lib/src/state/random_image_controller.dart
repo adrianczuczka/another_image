@@ -13,9 +13,13 @@ class RandomImageLoading extends RandomImageState {
 }
 
 class RandomImageLoaded extends RandomImageState {
-  const RandomImageLoaded(this.url);
+  const RandomImageLoaded(this.url, {this.fromHistory = false});
 
   final String url;
+
+  /// True when this image was restored by [RandomImageController.goBack]
+  /// rather than freshly fetched – the UI announces it differently.
+  final bool fromHistory;
 }
 
 class RandomImageError extends RandomImageState {
@@ -42,6 +46,16 @@ class RandomImageController extends ChangeNotifier {
   RandomImageState _state = const RandomImageLoading();
   RandomImageState get state => _state;
 
+  /// Upper bound on remembered URLs – about principle rather than memory;
+  /// nobody steps back a hundred times.
+  static const int maxHistoryLength = 100;
+
+  /// Previously shown URLs, oldest first. Session-only by design.
+  final List<String> _history = [];
+
+  /// Whether [goBack] has a previous image to restore.
+  bool get canGoBack => _history.isNotEmpty;
+
   String? _currentUrl;
   bool _fetching = false;
   bool _disposed = false;
@@ -57,7 +71,43 @@ class RandomImageController extends ChangeNotifier {
   Future<void> fetch() {
     _replacementAvailable = true;
     _replacingUrl = null;
+    final state = _state;
+    // Remember what's being shuffled away so [goBack] can restore it. Only
+    // user-initiated fetches push: a dead image's replacement fetch must
+    // not enshrine the broken URL in history.
+    if (state is RandomImageLoaded) _pushHistory(state.url);
     return _fetch();
+  }
+
+  /// Restores the most recently shuffled-away image. No network involved:
+  /// the URL is normally still in the image cache. Ignored while a fetch is
+  /// in flight, like a re-entrant [fetch].
+  void goBack() {
+    if (_fetching || _history.isEmpty) return;
+    // A back tap is as user-initiated as a fetch, so it refreshes the same
+    // one-replacement grant; [imageFailed] steps further back while more
+    // history remains, and the grant covers the final fallback.
+    _replacementAvailable = true;
+    _replacingUrl = null;
+    final url = _history.removeLast();
+    _currentUrl = url;
+    _state = RandomImageLoaded(url, fromHistory: true);
+    _notify();
+  }
+
+  void _pushHistory(String url) {
+    if (_history.length == maxHistoryLength) _history.removeAt(0);
+    _history.add(url);
+  }
+
+  /// The deferred half of [imageFailed]'s history path.
+  void _goBackFurther() {
+    _replacingUrl = null;
+    if (_disposed || _fetching || _history.isEmpty) return;
+    final url = _history.removeLast();
+    _currentUrl = url;
+    _state = RandomImageLoaded(url, fromHistory: true);
+    _notify();
   }
 
   /// Reports that the image at [url] could not be loaded.
@@ -79,6 +129,14 @@ class RandomImageController extends ChangeNotifier {
     // microtask starting the fetch. (While a fetch runs, the state is
     // Loading, so the guard above has already returned.)
     if (url == _replacingUrl) return true;
+    // A restored image that fails (cache evicted and the URL since dead)
+    // steps further back instead of fetching a random stranger – the user
+    // asked for a specific previous photo, not a new one.
+    if (state.fromHistory && _history.isNotEmpty) {
+      _replacingUrl = url;
+      scheduleMicrotask(_goBackFurther);
+      return true;
+    }
     if (!_replacementAvailable) return false;
     _replacementAvailable = false;
     _replacingUrl = url;

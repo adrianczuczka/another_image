@@ -231,4 +231,115 @@ void main() {
       expect(controller.state, isA<RandomImageError>()); // The panel stays.
     });
   });
+
+  group('goBack', () {
+    test('restores the previous image without a fetch', () async {
+      final api = FakeImageApi(['url-a', 'url-b']);
+      final controller = RandomImageController(api);
+      await controller.fetch();
+      expect(controller.canGoBack, isFalse);
+      await controller.fetch();
+      expect(controller.canGoBack, isTrue);
+
+      controller.goBack();
+
+      final state = controller.state as RandomImageLoaded;
+      expect(state.url, 'url-a');
+      expect(state.fromHistory, isTrue);
+      expect(api.calls, 2); // No network for going back.
+      expect(controller.canGoBack, isFalse);
+    });
+
+    test('walks further back on repeated calls', () async {
+      final api = FakeImageApi(['url-a', 'url-b', 'url-c']);
+      final controller = RandomImageController(api);
+      await controller.fetch();
+      await controller.fetch();
+      await controller.fetch();
+
+      controller.goBack();
+      expect((controller.state as RandomImageLoaded).url, 'url-b');
+      controller.goBack();
+      expect((controller.state as RandomImageLoaded).url, 'url-a');
+      expect(controller.canGoBack, isFalse);
+    });
+
+    test('a fetch after going back can be undone too', () async {
+      final api = FakeImageApi(['url-a', 'url-b', 'url-c']);
+      final controller = RandomImageController(api);
+      await controller.fetch();
+      await controller.fetch();
+      controller.goBack(); // Showing url-a again, history empty.
+
+      await controller.fetch(); // url-c, history [url-a].
+      controller.goBack();
+
+      expect((controller.state as RandomImageLoaded).url, 'url-a');
+    });
+
+    test('is ignored while a fetch is in flight', () async {
+      final completer = Completer<String>();
+      final api = FakeImageApi(['url-a', completer]);
+      final controller = RandomImageController(api);
+      await controller.fetch();
+      final second = controller.fetch(); // In flight; history [url-a].
+
+      controller.goBack();
+      expect(controller.state, isA<RandomImageLoading>());
+
+      completer.complete('url-b');
+      await second;
+      expect((controller.state as RandomImageLoaded).url, 'url-b');
+      expect(controller.canGoBack, isTrue); // History untouched.
+    });
+
+    test('caps the history', () async {
+      final urls = [
+        for (var i = 0; i <= RandomImageController.maxHistoryLength + 5; i++)
+          'url-$i',
+      ];
+      final controller = RandomImageController(FakeImageApi(urls));
+      for (var i = 0; i < urls.length; i++) {
+        await controller.fetch();
+      }
+
+      var steps = 0;
+      while (controller.canGoBack) {
+        controller.goBack();
+        steps++;
+      }
+      expect(steps, RandomImageController.maxHistoryLength);
+    });
+
+    test('steps further back when a restored image fails', () async {
+      final api = FakeImageApi(['url-a', 'url-b', 'url-c']);
+      final controller = RandomImageController(api);
+      await controller.fetch();
+      await controller.fetch();
+      await controller.fetch(); // Showing url-c, history [url-a, url-b].
+      controller.goBack(); // url-b, history [url-a].
+
+      expect(controller.imageFailed('url-b'), isTrue);
+      await pumpEventQueue();
+
+      final state = controller.state as RandomImageLoaded;
+      expect(state.url, 'url-a');
+      expect(state.fromHistory, isTrue);
+      expect(api.calls, 3); // Stepping back never fetches.
+    });
+
+    test('falls back to a fresh fetch when history runs out', () async {
+      final api = FakeImageApi(['url-a', 'url-b', 'url-c']);
+      final controller = RandomImageController(api);
+      await controller.fetch();
+      await controller.fetch(); // url-b, history [url-a].
+      controller.goBack(); // url-a, history empty.
+
+      expect(controller.imageFailed('url-a'), isTrue);
+      await pumpEventQueue();
+
+      expect((controller.state as RandomImageLoaded).url, 'url-c');
+      expect(api.calls, 3);
+    });
+  });
 }

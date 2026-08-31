@@ -73,7 +73,9 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onStateChanged() {
     _stopWaitingForImage();
     final state = widget.controller.state;
-    if (state is RandomImageLoaded) _announceWhenShown(state.url);
+    if (state is RandomImageLoaded) {
+      _announceWhenShown(state.url, fromHistory: state.fromHistory);
+    }
   }
 
   /// Watches the current image for its first decoded frame, then announces
@@ -84,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ///
   /// Resolving the same provider as the image widget shares its cache entry,
   /// so this costs no extra download or decode.
-  void _announceWhenShown(String url) {
+  void _announceWhenShown(String url, {required bool fromHistory}) {
     final stream = CachedNetworkImageProvider(
       url,
       cacheManager: widget.cacheManager,
@@ -100,7 +102,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _shownUrl = url;
       SemanticsService.sendAnnouncement(
         View.of(context),
-        isRepeat ? 'Same image shown again' : 'New image loaded',
+        fromHistory
+            ? 'Previous image shown'
+            : isRepeat
+            ? 'Same image shown again'
+            : 'New image loaded',
         Directionality.of(context),
       );
     }, onError: (_, _) => _stopWaitingForImage());
@@ -122,6 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
       listenable: widget.controller,
       builder: (context, _) {
         final colorScheme = Theme.of(context).colorScheme;
+        final reduceMotion = MediaQuery.disableAnimationsOf(context);
         return AnnotatedRegion<SystemUiOverlayStyle>(
           // The photo runs edge to edge behind both bars; the scrims keep
           // the bar icons legible over arbitrary pixels, so the icons are
@@ -164,20 +171,40 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const _EdgeScrims(),
                 SafeArea(
-                  child: Align(
-                    alignment: AlignmentDirectional.topEnd,
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: IconButton(
-                        // Always live: the controller ignores re-entrant
-                        // calls, and disabling would flash the icon grey on
-                        // each tap.
-                        onPressed: widget.controller.fetch,
-                        icon: const Icon(Icons.shuffle),
-                        color: Colors.white,
-                        iconSize: 28,
-                        tooltip: 'Load another random image',
-                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Appears once there is a previous image to restore
+                        // and fades away at the start of history – its
+                        // absence is the only depth indicator this needs.
+                        AnimatedSwitcher(
+                          duration: reduceMotion
+                              ? Duration.zero
+                              : const Duration(milliseconds: 200),
+                          child: widget.controller.canGoBack
+                              ? IconButton(
+                                  onPressed: widget.controller.goBack,
+                                  icon: const Icon(Icons.undo),
+                                  color: Colors.white,
+                                  iconSize: 28,
+                                  tooltip: 'Show the previous image',
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          // Always live: the controller ignores re-entrant
+                          // calls, and disabling would flash the icon grey on
+                          // each tap.
+                          onPressed: widget.controller.fetch,
+                          icon: const Icon(Icons.shuffle),
+                          color: Colors.white,
+                          iconSize: 28,
+                          tooltip: 'Load another random image',
+                        ),
+                      ],
                     ),
                   ),
                 ),
