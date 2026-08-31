@@ -1,100 +1,112 @@
 import 'dart:async';
-import 'dart:ui';
+import 'dart:ui' as ui;
 
-import 'package:another_image/src/state/random_image_controller.dart';
 import 'package:another_image/src/state/theme_seed_controller.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'fake_image_api.dart';
 
 const red = Color(0xFFFF0000);
 const green = Color(0xFF00FF00);
 const blue = Color(0xFF0000FF);
 
+/// A tiny rendered frame; each call returns a fresh image because the
+/// controller takes ownership and disposes what it is given.
+Future<ui.Image> frame() {
+  final recorder = ui.PictureRecorder();
+  ui.Canvas(
+    recorder,
+  ).drawRect(const ui.Rect.fromLTWH(0, 0, 2, 2), ui.Paint()..color = red);
+  return recorder.endRecording().toImage(2, 2);
+}
+
 void main() {
-  test('starts with the fallback and follows each loaded image', () async {
-    final images = RandomImageController(FakeImageApi(['url-a', 'url-b']));
-    final seeds = ThemeSeedController(
-      images,
-      (url) async => url == 'url-a' ? red : green,
-    );
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('starts with the fallback and follows each rendered image', () async {
+    final queue = [red, green];
+    final seeds = ThemeSeedController((_) async => queue.removeAt(0));
     var notified = 0;
     seeds.addListener(() => notified++);
 
     expect(seeds.seed, ThemeSeedController.defaultFallback);
 
-    await images.fetch();
+    seeds.imageShown('url-a', await frame());
     await pumpEventQueue();
     expect(seeds.seed, red);
 
-    await images.fetch();
+    seeds.imageShown('url-b', await frame());
     await pumpEventQueue();
     expect(seeds.seed, green);
     expect(notified, 2);
   });
 
   test('ignores an extraction that finishes after a newer one', () async {
-    final images = RandomImageController(FakeImageApi(['url-a', 'url-b']));
-    final pending = <String, Completer<Color>>{};
-    final seeds = ThemeSeedController(
-      images,
-      (url) => (pending[url] = Completer<Color>()).future,
-    );
+    final pending = <Completer<Color>>[];
+    final seeds = ThemeSeedController((_) {
+      final completer = Completer<Color>();
+      pending.add(completer);
+      return completer.future;
+    });
 
-    await images.fetch(); // url-a: extraction stays pending.
-    await images.fetch(); // url-b: also pending.
-    pending['url-b']!.complete(blue);
+    seeds.imageShown('url-a', await frame());
+    seeds.imageShown('url-b', await frame());
+    pending[1].complete(blue);
     await pumpEventQueue();
     expect(seeds.seed, blue);
 
-    pending['url-a']!.complete(red); // The slow, stale one.
+    pending[0].complete(red); // The slow, stale one.
     await pumpEventQueue();
 
     expect(seeds.seed, blue);
   });
 
-  test('keeps the previous seed when extraction fails', () async {
-    final images = RandomImageController(FakeImageApi(['url-a', 'url-b']));
-    final seeds = ThemeSeedController(
-      images,
-      (url) async => url == 'url-a' ? green : throw Exception('undecodable'),
-    );
-    var notified = 0;
-    seeds.addListener(() => notified++);
-
-    await images.fetch();
-    await pumpEventQueue();
-    await images.fetch();
-    await pumpEventQueue();
-
-    expect(seeds.seed, green);
-    expect(notified, 1);
-  });
-
-  test('stops following images after dispose', () async {
-    final images = RandomImageController(FakeImageApi(['url-a']));
+  test('skips re-extraction when the same image renders again', () async {
     var extractions = 0;
-    final seeds = ThemeSeedController(images, (_) async {
+    final seeds = ThemeSeedController((_) async {
       extractions++;
       return red;
     });
 
-    seeds.dispose();
-    await images.fetch();
+    seeds.imageShown('url-a', await frame());
+    await pumpEventQueue();
+    seeds.imageShown('url-a', await frame()); // The duplicate re-roll case.
     await pumpEventQueue();
 
-    expect(extractions, 0);
+    expect(extractions, 1);
+    expect(seeds.seed, red);
   });
 
-  test('picks up an image that loaded before construction', () async {
-    final images = RandomImageController(FakeImageApi(['url-a']));
-    await images.fetch();
+  test('retries a URL whose extraction failed when it renders again', () async {
+    var calls = 0;
+    final seeds = ThemeSeedController((_) async {
+      if (++calls == 1) throw Exception('unreadable');
+      return green;
+    });
 
-    final seeds = ThemeSeedController(images, (_) async => red);
+    seeds.imageShown('url-a', await frame());
+    await pumpEventQueue();
+    expect(seeds.seed, ThemeSeedController.defaultFallback);
+
+    seeds.imageShown('url-a', await frame());
     await pumpEventQueue();
 
-    expect(seeds.seed, red);
+    expect(seeds.seed, green);
+  });
+
+  test('keeps the previous seed when extraction fails', () async {
+    var calls = 0;
+    final seeds = ThemeSeedController((_) async {
+      if (++calls == 1) return green;
+      throw Exception('unreadable');
+    });
+
+    seeds.imageShown('url-a', await frame());
+    await pumpEventQueue();
+    seeds.imageShown('url-b', await frame());
+    await pumpEventQueue();
+
+    expect(seeds.seed, green);
   });
 
   test('reports a programming error from extraction, keeps the seed', () async {
@@ -102,16 +114,40 @@ void main() {
     final previousHandler = FlutterError.onError;
     FlutterError.onError = reported.add;
     addTearDown(() => FlutterError.onError = previousHandler);
-    final images = RandomImageController(FakeImageApi(['url-a']));
-    final seeds = ThemeSeedController(
-      images,
-      (_) async => throw StateError('bug'),
-    );
+    final seeds = ThemeSeedController((_) async => throw StateError('bug'));
 
-    await images.fetch();
+    seeds.imageShown('url-a', await frame());
     await pumpEventQueue();
 
     expect(seeds.seed, ThemeSeedController.defaultFallback);
     expect(reported, hasLength(1));
+  });
+
+  test('does not notify for an identical seed from a new image', () async {
+    final seeds = ThemeSeedController((_) async => red);
+    var notified = 0;
+    seeds.addListener(() => notified++);
+
+    seeds.imageShown('url-a', await frame());
+    await pumpEventQueue();
+    seeds.imageShown('url-b', await frame());
+    await pumpEventQueue();
+
+    expect(seeds.seed, red);
+    expect(notified, 1);
+  });
+
+  test('ignores frames after dispose', () async {
+    var extractions = 0;
+    final seeds = ThemeSeedController((_) async {
+      extractions++;
+      return red;
+    });
+
+    seeds.dispose();
+    seeds.imageShown('url-a', await frame());
+    await pumpEventQueue();
+
+    expect(extractions, 0);
   });
 }

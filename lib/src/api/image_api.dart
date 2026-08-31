@@ -97,8 +97,15 @@ class ImageApi {
         throw ImageApiException(ImageApiFailure.malformed);
       }
       if (uri.host != unsplashHost) return uri.toString();
+      // queryParametersAll, so a repeated key survives the rebuild;
+      // imageParams still win on conflict.
       return uri
-          .replace(queryParameters: {...uri.queryParameters, ...imageParams})
+          .replace(
+            queryParameters: <String, dynamic>{
+              ...uri.queryParametersAll,
+              ...imageParams,
+            },
+          )
           .toString();
     } on FormatException {
       throw ImageApiException(ImageApiFailure.malformed);

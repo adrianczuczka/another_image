@@ -24,7 +24,7 @@ Both clips show a cold start, several taps of "Another" in light mode, a switch 
 ## Features
 
 - Centered square image with rounded corners, cropped server-side to match the display. In landscape the button moves beside the square instead of below it.
-- Dynamic theming: after each image loads, a Material 3 seed color is extracted from it (the same quantize-and-score pipeline as `ColorScheme.fromImageProvider`, run once at thumbnail size for both the light and dark schemes), and the background animates to the new palette.
+- Dynamic theming: as each image renders, a Material 3 seed color is extracted from the displayed frame (the same quantize-and-score pipeline as `ColorScheme.fromImageProvider`, sampled down and quantized off the UI isolate, one extraction for both the light and dark schemes), and the background animates to the new palette. Deriving from the rendered frame means the theme can't diverge from what's on screen.
 - "Another" button that fetches a fresh image, with a determinate download progress indicator.
 - Error handling for both API failures and broken image URLs, each with an inline retry and a 10-second request timeout.
 - System light and dark mode – both schemes are seeded from the same image.
@@ -53,7 +53,7 @@ Things the implementation accounts for, found by probing the endpoint:
 - Three of the ~20 URLs in the pool are dead Unsplash links (HTTP 404), so roughly one draw in seven hits a broken image – presumably by design. The first failure after each tap is answered by silently fetching a replacement; a second failure shows an error panel with a "Try another" action. Theme extraction failures are non-fatal. Fetch errors and image-load errors are distinct states with distinct copy.
 - The API returns bare Unsplash URLs that resolve to multi-MB originals. The client merges imgix parameters (`w=1200&h=1200&fit=crop&q=80&fm=jpg`) into the URL – preserving any parameters already present – to download a phone-sized square crop instead.
 
-Images are cached on disk by `cached_network_image`; theme extraction reads from the same cache, so each image is downloaded once.
+Images are cached on disk by `cached_network_image`; theme extraction reads the frame the widget rendered, so each image is downloaded and decoded once.
 
 ## Run
 

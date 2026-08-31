@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' as ui;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -8,9 +11,19 @@ import '../api/image_api.dart';
 import '../state/random_image_controller.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.controller, this.cacheManager});
+  const HomeScreen({
+    super.key,
+    required this.controller,
+    required this.onImageShown,
+    this.cacheManager,
+  });
 
   final RandomImageController controller;
+
+  /// Called with each image as it renders, with a clone of the rendered
+  /// frame; the receiver takes ownership of the clone. Drives the theme,
+  /// which must follow what is on screen rather than what was fetched.
+  final void Function(String url, ui.Image image) onImageShown;
 
   /// Backs the image widget; null uses the shared disk cache. Injectable so
   /// tests can serve or fail images deterministically.
@@ -29,6 +42,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     widget.controller.addListener(_onStateChanged);
+    // Catch up with an image that loaded before this screen mounted –
+    // deferred, because the announcement path reads inherited widgets,
+    // which initState must not do synchronously.
+    scheduleMicrotask(() {
+      if (mounted) _onStateChanged();
+    });
   }
 
   @override
@@ -54,9 +73,11 @@ class _HomeScreenState extends State<HomeScreen> {
     if (state is RandomImageLoaded) _announceWhenShown(state.url);
   }
 
-  /// Tells screen reader users about the new image once it has decoded – not
-  /// when its URL arrives, since the download takes a moment and a few URLs
-  /// are dead. The error panel is a live region and announces itself.
+  /// Watches the current image for its first decoded frame, then announces
+  /// it to screen readers and hands the frame to [HomeScreen.onImageShown]
+  /// for theming – reacting to the render rather than the URL, since the
+  /// download takes a moment and a few URLs are dead. The error panel is a
+  /// live region and announces itself.
   ///
   /// Resolving the same provider as the image widget shares its cache entry,
   /// so this costs no extra download or decode.
@@ -67,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ).resolve(ImageConfiguration.empty);
     late final ImageStreamListener listener;
     listener = ImageStreamListener((ImageInfo info, _) {
+      widget.onImageShown(url, info.image.clone());
       info.dispose();
       _stopWaitingForImage();
       if (!mounted) return;
@@ -268,10 +290,10 @@ class _ImageSquare extends StatelessWidget {
             fadeOutDuration: fadeDuration,
             // Only the loaded picture is an image to assistive tech; the
             // progress and failure states describe themselves.
-            imageBuilder: (context, imageProvider) => Semantics(
-              image: true,
-              label: 'Random photo',
-              child: Image(image: imageProvider, fit: BoxFit.cover),
+            imageBuilder: (context, imageProvider) => Image(
+              image: imageProvider,
+              fit: BoxFit.cover,
+              semanticLabel: 'Random photo from Unsplash',
             ),
             progressIndicatorBuilder: (context, _, progress) => Center(
               child: CircularProgressIndicator(

@@ -63,6 +63,21 @@ void main() {
       expect(await api.fetchRandomImageUrl(), 'https://example.com/photo.jpg');
     });
 
+    test('keeps repeated query keys intact', () async {
+      final api = ImageApi(
+        client: MockClient(
+          (_) async => http.Response(
+            '{"url": "https://images.unsplash.com/photo?crop=faces&crop=entropy"}',
+            200,
+          ),
+        ),
+      );
+
+      final url = Uri.parse(await api.fetchRandomImageUrl());
+
+      expect(url.queryParametersAll['crop'], ['faces', 'entropy']);
+    });
+
     test('reports a non-200 response as a server error with its status', () {
       final api = ImageApi(
         client: MockClient((_) async => http.Response('oops', 503)),

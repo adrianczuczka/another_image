@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -15,23 +14,6 @@ void main() {
   // enforces this and iOS always has. HomeScreen styles the bar icons.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   runApp(const AnotherImageApp());
-}
-
-/// Builds the production seed extractor: a thumbnail decode through the same
-/// cache the image widget uses, so each image costs one download. The cache
-/// package can only resize through an [ImageCacheManager]; for any other
-/// injected manager the extractor decodes at full size, and the extraction
-/// pipeline's pixel sampling keeps the cost bounded.
-SeedExtractor _seedFromNetworkImage(BaseCacheManager? cacheManager) {
-  final canResize = cacheManager == null || cacheManager is ImageCacheManager;
-  return (url) => seedColorFromImageProvider(
-    CachedNetworkImageProvider(
-      url,
-      cacheManager: cacheManager,
-      maxWidth: canResize ? 112 : null,
-      maxHeight: canResize ? 112 : null,
-    ),
-  );
 }
 
 class AnotherImageApp extends StatefulWidget {
@@ -60,8 +42,7 @@ class _AnotherImageAppState extends State<AnotherImageApp>
   late final ImageApi _api = widget.api ?? ImageApi();
   late final RandomImageController _images = RandomImageController(_api);
   late final ThemeSeedController _themeSeed = ThemeSeedController(
-    _images,
-    widget.seedExtractor ?? _seedFromNetworkImage(widget.cacheManager),
+    widget.seedExtractor ?? seedColorFromImage,
   );
 
   @override
@@ -120,6 +101,8 @@ class _AnotherImageAppState extends State<AnotherImageApp>
         home: HomeScreen(
           controller: _images,
           cacheManager: widget.cacheManager,
+          // The theme follows what actually rendered, not what was fetched.
+          onImageShown: _themeSeed.imageShown,
         ),
       ),
     );

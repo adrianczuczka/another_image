@@ -75,7 +75,10 @@ class RandomImageController extends ChangeNotifier {
     // widget on its way out – the state has already moved to an error or a
     // new image – must neither consume the grant nor touch the state.
     if (state is! RandomImageLoaded || state.url != url) return true;
-    if (url == _replacingUrl || _fetching) return true;
+    // Covers the window between consuming the grant and the scheduled
+    // microtask starting the fetch. (While a fetch runs, the state is
+    // Loading, so the guard above has already returned.)
+    if (url == _replacingUrl) return true;
     if (!_replacementAvailable) return false;
     _replacementAvailable = false;
     _replacingUrl = url;
