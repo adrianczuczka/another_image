@@ -37,9 +37,21 @@ class _HomeScreenState extends State<HomeScreen> {
   ImageStream? _pendingImage;
   ImageStreamListener? _pendingImageListener;
 
-  /// Last URL whose first frame actually rendered – de-dups screen-reader
-  /// announcements.
+  /// Last URL whose first frame actually rendered – the photo currently on
+  /// screen, or null when a spinner or panel shows instead. While the
+  /// controller's URL differs from this, the old photo is held on screen
+  /// and the new one decodes off screen ([_watchImage] swaps them). Also
+  /// de-dups screen-reader announcements.
   String? _shownUrl;
+
+  /// URL that failed to load with no replacement left; the screen shows
+  /// the failure panel while the controller still reports it.
+  String? _failedUrl;
+
+  /// The state already reacted to. A notify can report the same object
+  /// (fetch bookkeeping around a kept state); re-watching the image then
+  /// would re-announce it to screen readers and drop a pending watch.
+  RandomImageState? _lastState;
 
   @override
   void initState() {
@@ -71,45 +83,74 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onStateChanged() {
-    _stopWaitingForImage();
     final state = widget.controller.state;
+    if (identical(state, _lastState)) return;
+    _lastState = state;
+    _stopWaitingForImage();
     if (state is RandomImageLoaded) {
-      _announceWhenShown(state.url, fromHistory: state.fromHistory);
+      if (_failedUrl != null && _failedUrl != state.url) {
+        // The failure belonged to an earlier URL; this one starts clean.
+        setState(() => _failedUrl = null);
+      }
+      _watchImage(state.url, fromHistory: state.fromHistory);
+    } else if (_shownUrl != null || _failedUrl != null) {
+      // The spinner or error panel replaces the photo, so the next load
+      // has nothing on screen to hold on to.
+      setState(() {
+        _shownUrl = null;
+        _failedUrl = null;
+      });
     }
   }
 
-  /// Watches the current image for its first decoded frame, then announces
-  /// it to screen readers and hands the frame to [HomeScreen.onImageShown]
-  /// for theming – reacting to the render rather than the URL, since the
-  /// download takes a moment and a few URLs are dead. The error panel is a
-  /// live region and announces itself.
+  /// Watches [url] for its first decoded frame – the moment it can actually
+  /// paint. Until then the previous photo stays on screen; on the frame the
+  /// display swaps to [url], the frame seeds the theme via
+  /// [HomeScreen.onImageShown], and screen readers hear about the change.
+  /// A load failure goes to [RandomImageController.imageFailed], which
+  /// either fetches a silent replacement or declines, moving the screen to
+  /// the failure panel – a live region that announces itself.
   ///
   /// Resolving the same provider as the image widget shares its cache entry,
   /// so this costs no extra download or decode.
-  void _announceWhenShown(String url, {required bool fromHistory}) {
+  void _watchImage(String url, {required bool fromHistory}) {
     final stream = CachedNetworkImageProvider(
       url,
       cacheManager: widget.cacheManager,
     ).resolve(ImageConfiguration.empty);
     late final ImageStreamListener listener;
-    listener = ImageStreamListener((ImageInfo info, _) {
-      widget.onImageShown(url, info.image.clone());
-      info.dispose();
-      _stopWaitingForImage();
-      if (!mounted) return;
-      // The duplicate re-roll can keep the same URL; don't claim novelty.
-      final isRepeat = url == _shownUrl;
-      _shownUrl = url;
-      SemanticsService.sendAnnouncement(
-        View.of(context),
-        fromHistory
-            ? 'Previous image shown'
-            : isRepeat
-            ? 'Same image shown again'
-            : 'New image loaded',
-        Directionality.of(context),
-      );
-    }, onError: (_, _) => _stopWaitingForImage());
+    listener = ImageStreamListener(
+      (ImageInfo info, _) {
+        widget.onImageShown(url, info.image.clone());
+        info.dispose();
+        _stopWaitingForImage();
+        if (!mounted) return;
+        // The duplicate re-roll can keep the same URL; don't claim novelty.
+        final isRepeat = url == _shownUrl;
+        setState(() => _shownUrl = url); // Releases any held previous photo.
+        SemanticsService.sendAnnouncement(
+          View.of(context),
+          fromHistory
+              ? 'Previous image shown'
+              : isRepeat
+              ? 'Same image shown again'
+              : 'New image loaded',
+          Directionality.of(context),
+        );
+      },
+      onError: (_, _) {
+        _stopWaitingForImage();
+        if (!mounted) return;
+        // True means a replacement is coming (or the failure is stale) and a
+        // new state will arrive; false means this URL is the end of the line.
+        if (!widget.controller.imageFailed(url)) {
+          setState(() {
+            _failedUrl = url;
+            _shownUrl = null;
+          });
+        }
+      },
+    );
     _pendingImage = stream;
     _pendingImageListener = listener;
     stream.addListener(listener);
@@ -127,6 +168,19 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListenableBuilder(
       listenable: widget.controller,
       builder: (context, _) {
+        final state = widget.controller.state;
+        // While a fresh URL decodes off screen, keep the rendered photo up;
+        // the crossfade to the new one runs only once it can paint.
+        final holdingPhoto =
+            state is RandomImageLoaded &&
+            _shownUrl != null &&
+            state.url != _shownUrl &&
+            state.url != _failedUrl;
+        // With the photo staying up, the shuffle button is the only place
+        // fetch-and-decode progress can show.
+        final busy =
+            state is RandomImageLoaded &&
+            (widget.controller.isFetching || holdingPhoto);
         final colorScheme = Theme.of(context).colorScheme;
         final reduceMotion = MediaQuery.disableAnimationsOf(context);
         return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -164,7 +218,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 _ImageContent(
-                  state: widget.controller.state,
+                  state: holdingPhoto ? RandomImageLoaded(_shownUrl!) : state,
+                  failedUrl: _failedUrl,
                   cacheManager: widget.cacheManager,
                   onRetry: widget.controller.fetch,
                   onImageFailed: widget.controller.imageFailed,
@@ -183,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           duration: reduceMotion
                               ? Duration.zero
                               : const Duration(milliseconds: 200),
+                          transitionBuilder: _unkeyedFade,
                           child: widget.controller.canGoBack
                               ? IconButton(
                                   onPressed: widget.controller.goBack,
@@ -199,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           // calls, and disabling would flash the icon grey on
                           // each tap.
                           onPressed: widget.controller.fetch,
-                          icon: const Icon(Icons.shuffle),
+                          icon: _ShuffleIcon(busy: busy),
                           color: Colors.white,
                           iconSize: 28,
                           tooltip: 'Load another random image',
@@ -258,20 +314,34 @@ class _EdgeScrims extends StatelessWidget {
   }
 }
 
+/// An unkeyed fade for [AnimatedSwitcher.transitionBuilder]. The default
+/// builder keys each fade by the child's key, so two in-flight children
+/// with equal keys – both null, or the same child re-entering within one
+/// fade – collide with "Duplicate keys found". Unkeyed, the switcher falls
+/// back to its unique per-entry key.
+Widget _unkeyedFade(Widget child, Animation<double> animation) =>
+    FadeTransition(opacity: animation, child: child);
+
 class _ImageContent extends StatelessWidget {
   const _ImageContent({
     required this.state,
+    required this.failedUrl,
     required this.cacheManager,
     required this.onRetry,
     required this.onImageFailed,
   });
 
   final RandomImageState state;
+
+  /// URL whose load failed with no replacement left – rendered as the
+  /// failure panel instead of yet another load attempt.
+  final String? failedUrl;
+
   final BaseCacheManager? cacheManager;
   final VoidCallback onRetry;
 
   /// Reports a failed image load. Returns true when the screen should keep
-  /// showing a loading state because a replacement is on its way.
+  /// its current display because a replacement is on its way.
   final bool Function(String url) onImageFailed;
 
   @override
@@ -286,6 +356,7 @@ class _ImageContent extends StatelessWidget {
           : const Duration(milliseconds: 250),
       switchInCurve: Curves.easeOut,
       switchOutCurve: Curves.easeIn,
+      transitionBuilder: _unkeyedFade,
       // The default layout builder loosens constraints, letting the image
       // take its natural aspect ratio; expand children to fill the screen.
       layoutBuilder: (currentChild, previousChildren) => Stack(
@@ -297,6 +368,14 @@ class _ImageContent extends StatelessWidget {
         RandomImageError(:final cause, :final statusCode) => _ErrorPanel(
           message: _fetchErrorCopy(cause, statusCode),
           actionLabel: 'Try again',
+          onAction: onRetry,
+        ),
+        // A URL that failed for good while the previous photo was still up;
+        // the errorWidget below covers the same failure when the dead image
+        // itself was the one being displayed.
+        RandomImageLoaded(:final url) when url == failedUrl => _ErrorPanel(
+          message: "This image couldn't be loaded",
+          actionLabel: 'Try another',
           onAction: onRetry,
         ),
         RandomImageLoaded(:final url) => CachedNetworkImage(
@@ -368,6 +447,82 @@ String _fetchErrorCopy(
     'The image service sent an unexpected response. Try again.',
   null => 'Something went wrong. Try again.',
 };
+
+/// The shuffle glyph, swapping to a small spinner once [busy] has lasted
+/// past a short delay. Fast loads finish with the photo crossfade as their
+/// only feedback; slow ones show that the tap is being worked on. The
+/// full-screen spinner can't serve here – the photo deliberately stays up
+/// while the next one loads.
+class _ShuffleIcon extends StatefulWidget {
+  const _ShuffleIcon({required this.busy});
+
+  /// Whether a new image is being fetched or decoded right now.
+  final bool busy;
+
+  @override
+  State<_ShuffleIcon> createState() => _ShuffleIconState();
+}
+
+class _ShuffleIconState extends State<_ShuffleIcon> {
+  /// How long a load must run before the spinner appears; anything faster
+  /// stays chrome-free.
+  static const Duration revealDelay = Duration(milliseconds: 400);
+
+  Timer? _revealTimer;
+  bool _showSpinner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.busy) _armTimer();
+  }
+
+  @override
+  void didUpdateWidget(_ShuffleIcon oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.busy == oldWidget.busy) return;
+    _revealTimer?.cancel();
+    _revealTimer = null;
+    if (widget.busy) {
+      _armTimer();
+    } else if (_showSpinner) {
+      setState(() => _showSpinner = false);
+    }
+  }
+
+  void _armTimer() {
+    _revealTimer = Timer(revealDelay, () {
+      setState(() => _showSpinner = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _revealTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return AnimatedSwitcher(
+      duration: reduceMotion
+          ? Duration.zero
+          : const Duration(milliseconds: 150),
+      transitionBuilder: _unkeyedFade,
+      child: _showSpinner
+          ? const SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Colors.white,
+                semanticsLabel: 'Loading a new image',
+              ),
+            )
+          : const Icon(Icons.shuffle),
+    );
+  }
+}
 
 class _Spinner extends StatelessWidget {
   const _Spinner();

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:another_image/main.dart';
@@ -147,6 +148,52 @@ void main() {
     });
   });
 
+  testWidgets('keeps the current photo up while the next one loads', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final cache = FakeCacheManager(
+        imageFile: await solidImageFile(const Color(0xFF2196F3)),
+        pendingUrls: {'https://img.test/slow'},
+      );
+      final urlFetch = Completer<String>();
+      final api = FakeImageApi(['https://img.test/ok', urlFetch]);
+      await tester.pumpWidget(
+        AnotherImageApp(
+          api: api,
+          seedExtractor: stubSeedExtractor,
+          cacheManager: cache,
+        ),
+      );
+      await settle(tester, () => find.byType(RawImage).evaluate().isNotEmpty);
+      // Let the cold-start spinner finish fading out before asserting.
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // While the URL fetch is in flight the photo stays, spinner-free.
+      await tester.tap(find.byIcon(Icons.shuffle));
+      await tester.pump();
+      CachedNetworkImage image() =>
+          tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
+      expect(image().imageUrl, 'https://img.test/ok');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      // The new URL arrives but its download stalls: the photo still
+      // stays, and the only progress shown is the small spinner that
+      // replaces the shuffle icon after a delay.
+      urlFetch.complete('https://img.test/slow');
+      await settle(
+        tester,
+        () => find.byType(CircularProgressIndicator).evaluate().isNotEmpty,
+      );
+      // Let the outgoing shuffle glyph finish fading out.
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(image().imageUrl, 'https://img.test/ok');
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.shuffle), findsNothing);
+    });
+  });
+
   testWidgets('fills the screen with the image in portrait', (tester) async {
     tester.view.physicalSize = const Size(800, 1600);
     tester.view.devicePixelRatio = 1;
@@ -169,9 +216,7 @@ void main() {
     expect(refresh.center.dy, lessThan(100));
   });
 
-  testWidgets('fills a phone screen edge to edge', (
-    tester,
-  ) async {
+  testWidgets('fills a phone screen edge to edge', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -190,9 +235,7 @@ void main() {
     expect(find.byIcon(Icons.shuffle), findsOneWidget);
   });
 
-  testWidgets('fills the screen with the image in landscape', (
-    tester,
-  ) async {
+  testWidgets('fills the screen with the image in landscape', (tester) async {
     tester.view.physicalSize = const Size(1600, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);

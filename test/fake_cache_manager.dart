@@ -13,13 +13,16 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// Without an [imageFile], every load stays pending forever, which keeps the
 /// image widget in its progress state. With one, URLs containing "dead" fail
-/// the way a 404 does and every other URL is served the file. Loading an
-/// actual file needs real async, so tests using it run inside
-/// [WidgetTester.runAsync].
+/// the way a 404 does, URLs in [pendingUrls] stall forever, and every other
+/// URL is served the file. Loading an actual file needs real async, so tests
+/// using it run inside [WidgetTester.runAsync].
 class FakeCacheManager implements BaseCacheManager {
-  FakeCacheManager({this.imageFile});
+  FakeCacheManager({this.imageFile, this.pendingUrls = const {}});
 
   final File? imageFile;
+
+  /// URLs whose loads never complete, as if the download stalled.
+  final Set<String> pendingUrls;
 
   @override
   Stream<FileResponse> getFileStream(
@@ -29,7 +32,9 @@ class FakeCacheManager implements BaseCacheManager {
     bool withProgress = false,
   }) {
     final file = imageFile;
-    if (file == null) return StreamController<FileResponse>().stream;
+    if (file == null || pendingUrls.contains(url)) {
+      return StreamController<FileResponse>().stream;
+    }
     if (url.contains('dead')) {
       return Stream.error(Exception('HTTP 404 for $url'));
     }

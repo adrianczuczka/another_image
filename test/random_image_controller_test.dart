@@ -20,6 +20,35 @@ void main() {
     expect((states.last as RandomImageLoaded).url, 'url-a');
   });
 
+  test('keeps the loaded image while the next fetch is in flight', () async {
+    final completer = Completer<String>();
+    final api = FakeImageApi(['url-a', completer]);
+    final controller = RandomImageController(api);
+    await controller.fetch();
+
+    final second = controller.fetch();
+    // No loading state between photos: url-a stays up, only the flag moves.
+    expect((controller.state as RandomImageLoaded).url, 'url-a');
+    expect(controller.isFetching, isTrue);
+
+    completer.complete('url-b');
+    await second;
+    expect((controller.state as RandomImageLoaded).url, 'url-b');
+    expect(controller.isFetching, isFalse);
+  });
+
+  test('never emits loading between two loaded images', () async {
+    final controller = RandomImageController(FakeImageApi(['url-a', 'url-b']));
+    await controller.fetch();
+    final states = <RandomImageState>[];
+    controller.addListener(() => states.add(controller.state));
+
+    await controller.fetch();
+
+    expect(states.whereType<RandomImageLoading>(), isEmpty);
+    expect((states.last as RandomImageLoaded).url, 'url-b');
+  });
+
   test('emits error state when the API fails', () async {
     final controller = RandomImageController(
       FakeImageApi([ImageApiException(ImageApiFailure.unreachable)]),
@@ -285,7 +314,11 @@ void main() {
       final second = controller.fetch(); // In flight; history [url-a].
 
       controller.goBack();
-      expect(controller.state, isA<RandomImageLoading>());
+      // Still the first image (the in-flight fetch keeps it up), and not
+      // restored from history – the call was ignored.
+      final held = controller.state as RandomImageLoaded;
+      expect(held.url, 'url-a');
+      expect(held.fromHistory, isFalse);
 
       completer.complete('url-b');
       await second;
